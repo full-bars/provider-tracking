@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, render_template_string, request
 from datetime import datetime, timedelta
 import sqlite3
 import json
@@ -7,6 +7,40 @@ from pathlib import Path
 
 app = Flask(__name__)
 DB_PATH = Path.home() / "provider_tracking" / "providers.db"
+
+REGIONS = {
+    'us': 'North America', 'ca': 'North America', 'mx': 'North America',
+    'gb': 'Europe', 'de': 'Europe', 'fr': 'Europe', 'es': 'Europe', 'fi': 'Europe',
+    'nl': 'Europe', 'se': 'Europe', 'no': 'Europe', 'dk': 'Europe', 'it': 'Europe',
+    'pl': 'Europe', 'cz': 'Europe', 'at': 'Europe', 'ch': 'Europe', 'be': 'Europe',
+    'ie': 'Europe', 'pt': 'Europe', 'ru': 'Europe', 'ua': 'Europe', 'ro': 'Europe',
+    'bg': 'Europe', 'hu': 'Europe', 'lt': 'Europe', 'lv': 'Europe', 'sk': 'Europe',
+    'hr': 'Europe', 'rs': 'Europe', 'md': 'Europe', 'by': 'Europe', 'is': 'Europe',
+    'lu': 'Europe', 'mt': 'Europe', 'si': 'Europe', 'cy': 'Europe', 'gr': 'Europe',
+    'mk': 'Europe', 'al': 'Europe', 'ba': 'Europe', 'am': 'Europe', 'ge': 'Europe',
+    'kz': 'Europe', 'az': 'Europe', 'xk': 'Europe', 'ee': 'Europe', 'li': 'Europe',
+    'mc': 'Europe', 'ad': 'Europe', 'tr': 'Europe',
+    'vn': 'Asia-Pacific', 'sg': 'Asia-Pacific', 'hk': 'Asia-Pacific', 'kr': 'Asia-Pacific',
+    'in': 'Asia-Pacific', 'jp': 'Asia-Pacific', 'th': 'Asia-Pacific', 'my': 'Asia-Pacific',
+    'id': 'Asia-Pacific', 'ph': 'Asia-Pacific', 'cn': 'Asia-Pacific', 'tw': 'Asia-Pacific',
+    'bd': 'Asia-Pacific', 'kh': 'Asia-Pacific', 'mn': 'Asia-Pacific', 'mm': 'Asia-Pacific',
+    'la': 'Asia-Pacific', 'nz': 'Asia-Pacific', 'au': 'Asia-Pacific', 'lk': 'Asia-Pacific',
+    'np': 'Asia-Pacific', 'uz': 'Asia-Pacific', 'tj': 'Asia-Pacific', 'kg': 'Asia-Pacific',
+    'pk': 'Asia-Pacific', 'ir': 'Middle East',
+    'ae': 'Middle East', 'sa': 'Middle East', 'il': 'Middle East', 'jo': 'Middle East',
+    'qa': 'Middle East', 'kw': 'Middle East', 'iq': 'Middle East', 'sy': 'Middle East',
+    'lb': 'Middle East', 'ps': 'Middle East', 'bh': 'Middle East', 'om': 'Middle East',
+    'br': 'Americas', 'ar': 'Americas', 'co': 'Americas', 'cl': 'Americas',
+    'pe': 'Americas', 'uy': 'Americas', 'py': 'Americas', 'ec': 'Americas',
+    'bo': 'Americas', 've': 'Americas', 'cr': 'Americas', 'pa': 'Americas',
+    'hn': 'Americas', 'gt': 'Americas', 'jm': 'Americas', 'do': 'Americas',
+    'pr': 'Americas', 'ky': 'Americas', 'bs': 'Americas', 'vi': 'Americas',
+    'bq': 'Americas', 'tt': 'Americas', 'gd': 'Americas',
+    'ng': 'Africa', 'ma': 'Africa', 'ke': 'Africa', 'za': 'Africa', 'sn': 'Africa',
+    'tz': 'Africa', 'ug': 'Africa', 'mz': 'Africa', 'gh': 'Africa', 'cd': 'Africa',
+    'et': 'Africa', 'ga': 'Africa', 'ci': 'Africa', 'tn': 'Africa', 'eg': 'Africa',
+    'ly': 'Africa', 'dz': 'Africa', 'mu': 'Africa', 'bw': 'Africa',
+}
 
 def get_db():
     conn = sqlite3.connect(str(DB_PATH))
@@ -50,37 +84,43 @@ def api_summary():
     day_ago_total = cursor.fetchone()['total'] or current_total
     day_delta = current_total - day_ago_total
     
-    # Top 10
+    # Top 25
     cursor.execute("""
-        SELECT country_name, country_code, provider_count 
-        FROM provider_counts WHERE timestamp = ? 
-        ORDER BY provider_count DESC LIMIT 10
+        SELECT country_name, country_code, provider_count
+        FROM provider_counts WHERE timestamp = ?
+        ORDER BY provider_count DESC LIMIT 25
     """, (latest,))
-    top_10 = [dict(row) for row in cursor.fetchall()]
-    
+    top_25 = [dict(row) for row in cursor.fetchall()]
+
     conn.close()
     return jsonify({
         'timestamp': latest,
         'total': current_total,
         'hour_delta': hour_delta,
         'day_delta': day_delta,
-        'top_10': top_10
+        'top_25': top_25
     })
 
 @app.route('/api/network_total')
 def api_network_total():
     conn = get_db()
     cursor = conn.cursor()
-    
+
     cursor.execute("""
-        SELECT timestamp, SUM(provider_count) as total 
-        FROM provider_counts 
-        GROUP BY timestamp 
+        SELECT timestamp, SUM(provider_count) as total
+        FROM provider_counts
+        GROUP BY timestamp
         ORDER BY timestamp DESC LIMIT 168
     """)
     data = [{'timestamp': row[0], 'total': row[1]} for row in cursor.fetchall()]
     data.reverse()
-    
+
+    # Add 24-hour moving average
+    window = 24
+    for i, row in enumerate(data):
+        start = max(0, i - window + 1)
+        row['ma'] = round(sum(d['total'] for d in data[start:i+1]) / (i - start + 1))
+
     conn.close()
     return jsonify(data)
 
@@ -146,6 +186,9 @@ def api_anomalies():
     conn = get_db()
     cursor = conn.cursor()
 
+    threshold_pct = float(request.args.get('threshold', 15))
+    threshold = -(threshold_pct / 100)
+
     latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
     hour_ago = (datetime.fromisoformat(latest) - timedelta(hours=1)).isoformat(sep=' ')
 
@@ -168,13 +211,13 @@ def api_anomalies():
                     ELSE 0 END as pct_change
         FROM current c
         LEFT JOIN past p ON c.country_code = p.country_code
-        WHERE CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0) < -0.15
+        WHERE CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0) < ?
         ORDER BY pct_change ASC
-    """, (latest, hour_ago))
+    """, (latest, hour_ago, threshold))
 
     anomalies = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return jsonify({'anomalies': anomalies, 'threshold': -0.15})
+    return jsonify({'anomalies': anomalies, 'threshold': threshold})
 
 @app.route('/api/growth-projection')
 def api_growth_projection():
@@ -258,6 +301,106 @@ def api_country_stats(code):
 
     conn.close()
     return jsonify({'volatility': volatility, 'churn_rate': round(avg_change, 1)})
+
+@app.route('/api/regions')
+def api_regions():
+    conn = get_db()
+    cursor = conn.cursor()
+
+    latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
+    day_ago = (datetime.fromisoformat(latest) - timedelta(days=1)).isoformat(sep=' ')
+
+    # Get current totals by region
+    cursor.execute("""
+        SELECT country_code, provider_count
+        FROM provider_counts WHERE timestamp = ?
+    """, (latest,))
+    current_by_country = {row[0]: row[1] for row in cursor.fetchall()}
+
+    # Get 24h-ago totals by region
+    cursor.execute("""
+        SELECT country_code, provider_count
+        FROM provider_counts
+        WHERE timestamp = (
+            SELECT MAX(timestamp) FROM provider_counts WHERE timestamp <= ?
+        )
+    """, (day_ago,))
+    past_by_country = {row[0]: row[1] for row in cursor.fetchall()}
+
+    # Aggregate by region
+    regions_data = {}
+    for cc, current_count in current_by_country.items():
+        region = REGIONS.get(cc, 'Other')
+        if region not in regions_data:
+            regions_data[region] = {'total': 0, 'past_total': 0}
+        regions_data[region]['total'] += current_count
+        regions_data[region]['past_total'] += past_by_country.get(cc, current_count)
+
+    # Build response
+    result = []
+    for region, data in regions_data.items():
+        delta = data['total'] - data['past_total']
+        result.append({
+            'region': region,
+            'total': data['total'],
+            'delta_24h': delta
+        })
+
+    result.sort(key=lambda x: x['total'], reverse=True)
+    conn.close()
+    return jsonify(result)
+
+@app.route('/api/at-risk')
+def api_at_risk():
+    conn = get_db()
+    cursor = conn.cursor()
+
+    latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
+    day_ago = (datetime.fromisoformat(latest) - timedelta(days=1)).isoformat(sep=' ')
+
+    # Countries that are at 0 now but were non-zero 24h ago
+    cursor.execute("""
+        SELECT c.country_code, c.country_name,
+               p.provider_count as prev_count, p.timestamp as last_seen_ts
+        FROM (
+            SELECT DISTINCT country_code, country_name FROM provider_counts WHERE timestamp = ? AND provider_count = 0
+        ) c
+        LEFT JOIN (
+            SELECT country_code, provider_count, timestamp FROM provider_counts
+            WHERE timestamp <= ? AND provider_count > 0
+            ORDER BY country_code, timestamp DESC
+        ) p ON c.country_code = p.country_code
+        WHERE p.provider_count > 0
+    """, (latest, day_ago))
+    disappeared = [dict(row) for row in cursor.fetchall()]
+
+    # Countries with 1-5 providers and declining in last 24h
+    cursor.execute("""
+        WITH current AS (
+            SELECT country_code, country_name, provider_count
+            FROM provider_counts WHERE timestamp = ? AND provider_count BETWEEN 1 AND 5
+        ),
+        past AS (
+            SELECT country_code, provider_count
+            FROM provider_counts
+            WHERE timestamp = (
+                SELECT MAX(timestamp) FROM provider_counts WHERE timestamp <= ?
+            )
+        )
+        SELECT c.country_name, c.country_code, c.provider_count,
+               COALESCE(c.provider_count - p.provider_count, 0) as delta_24h
+        FROM current c
+        LEFT JOIN past p ON c.country_code = p.country_code
+        WHERE (p.provider_count IS NULL OR c.provider_count - p.provider_count < 0)
+        ORDER BY c.provider_count ASC
+    """, (latest, day_ago))
+    near_zero = [dict(row) for row in cursor.fetchall()]
+
+    conn.close()
+    return jsonify({
+        'disappeared': disappeared,
+        'near_zero': near_zero
+    })
 
 @app.route('/api/comparison/<code1>/<code2>')
 def api_comparison(code1, code2):
@@ -431,6 +574,7 @@ DASHBOARD_HTML = '''
 
         <div class="alert-banner" id="anomaly-alert">
             <strong>⚠️ Anomaly Detected:</strong> <span id="anomaly-text"></span>
+            <span style="margin-left: 20px; font-size: 11px;">Threshold: <input id="anomaly-threshold" type="number" value="15" min="1" max="100" style="width: 45px; background: #1a1f26; border: 1px solid #991b1b; color: #fecaca; padding: 4px;"> %</span>
         </div>
 
 
@@ -463,8 +607,19 @@ DASHBOARD_HTML = '''
                 <div class="chart-container"><canvas id="totalChart"></canvas></div>
             </div>
             <div class="chart-card">
-                <h3>Top 10 Countries</h3>
-                <div class="chart-container"><canvas id="top10Chart"></canvas></div>
+                <h3>Top 25 Countries</h3>
+                <div class="chart-container" style="height: 500px;"><canvas id="top25Chart"></canvas></div>
+            </div>
+        </div>
+
+        <div class="charts">
+            <div class="chart-card">
+                <h3>Provider Distribution</h3>
+                <div class="chart-container"><canvas id="distChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3>Regional Totals</h3>
+                <div class="chart-container"><canvas id="regionChart"></canvas></div>
             </div>
         </div>
         
@@ -483,7 +638,21 @@ DASHBOARD_HTML = '''
                 <tbody></tbody>
             </table>
         </div>
-        
+
+        <div class="table-card">
+            <h3>⚠️ At Risk</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 12px;">
+                <div>
+                    <h4 style="color: #9ca3af; margin-bottom: 10px; font-size: 11px; text-transform: uppercase;">Disappeared (0 providers)</h4>
+                    <div id="disappeared-list"></div>
+                </div>
+                <div>
+                    <h4 style="color: #9ca3af; margin-bottom: 10px; font-size: 11px; text-transform: uppercase;">Near Zero (1-5, declining)</h4>
+                    <div id="near-zero-list"></div>
+                </div>
+            </div>
+        </div>
+
         <div class="search-box">
             <h3 style="margin-bottom: 10px;">Search Country</h3>
             <input type="text" id="country-search" placeholder="Enter country code (e.g., us, gb, de)...">
@@ -502,15 +671,18 @@ DASHBOARD_HTML = '''
     </div>
     
     <script>
-        let totalChart, top10Chart, countryChart;
+        let totalChart, top25Chart, distChart, regionChart, countryChart;
         let refreshInterval;
+        let anomalyThreshold = localStorage.getItem('anomalyThreshold') || '15';
         
         async function loadData() {
             const summary = await fetch('/api/summary').then(r => r.json());
             const networkTotal = await fetch('/api/network_total').then(r => r.json());
             const moversDetail = await fetch('/api/movers-detailed').then(r => r.json());
-            const anomalies = await fetch('/api/anomalies').then(r => r.json()).catch(() => ({ anomalies: [] }));
+            const anomalies = await fetch(`/api/anomalies?threshold=${anomalyThreshold}`).then(r => r.json()).catch(() => ({ anomalies: [] }));
             const growth = await fetch('/api/growth-projection').then(r => r.json()).catch(() => ({}));
+            const regions = await fetch('/api/regions').then(r => r.json()).catch(() => ([]));
+            const atRisk = await fetch('/api/at-risk').then(r => r.json()).catch(() => ({ disappeared: [], near_zero: [] }));
 
             // Handle anomalies
             const anomalyBanner = document.getElementById('anomaly-alert');
@@ -532,18 +704,18 @@ DASHBOARD_HTML = '''
 
             // Update stats
             document.getElementById('total').textContent = summary.total.toLocaleString();
-            document.getElementById('top-country').textContent = summary.top_10[0]?.provider_count.toLocaleString() || '-';
-            document.getElementById('top-country-code').textContent = summary.top_10[0]?.country_name || '-';
-            
+            document.getElementById('top-country').textContent = summary.top_25[0]?.provider_count.toLocaleString() || '-';
+            document.getElementById('top-country-code').textContent = summary.top_25[0]?.country_name || '-';
+
             const dayDelta = summary.day_delta;
             document.getElementById('day-delta').textContent = (dayDelta >= 0 ? '+' : '') + dayDelta.toLocaleString();
             document.getElementById('day-delta').className = dayDelta >= 0 ? 'delta-positive' : 'delta-negative';
-            
+
             const hourDelta = summary.hour_delta;
             document.getElementById('hour-delta').textContent = (hourDelta >= 0 ? '+' : '') + hourDelta.toLocaleString();
             document.getElementById('hour-delta').className = hourDelta >= 0 ? 'delta-positive' : 'delta-negative';
-            
-            // Network total chart
+
+            // Network total chart with MA
             if (totalChart) totalChart.destroy();
             totalChart = new Chart(document.getElementById('totalChart'), {
                 type: 'line',
@@ -556,25 +728,33 @@ DASHBOARD_HTML = '''
                         backgroundColor: 'rgba(74, 222, 128, 0.05)',
                         tension: 0.3,
                         fill: true
+                    }, {
+                        label: '24h MA',
+                        data: networkTotal.map(d => d.ma),
+                        borderColor: '#9ca3af',
+                        borderDash: [5, 5],
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        fill: false
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false }, filler: { propagate: true } },
+                    plugins: { legend: { display: true, labels: { color: '#9ca3af' } }, filler: { propagate: true } },
                     scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af' }, grid: { display: false } } }
                 }
             });
-            
-            // Top 10 chart
-            if (top10Chart) top10Chart.destroy();
-            top10Chart = new Chart(document.getElementById('top10Chart'), {
+
+            // Top 25 bar chart
+            if (top25Chart) top25Chart.destroy();
+            top25Chart = new Chart(document.getElementById('top25Chart'), {
                 type: 'bar',
                 data: {
-                    labels: summary.top_10.map(c => c.country_code.toUpperCase()),
+                    labels: summary.top_25.map(c => c.country_code.toUpperCase()),
                     datasets: [{
                         label: 'Providers',
-                        data: summary.top_10.map(c => c.provider_count),
+                        data: summary.top_25.map(c => c.provider_count),
                         backgroundColor: '#4ade80'
                     }]
                 },
@@ -586,7 +766,54 @@ DASHBOARD_HTML = '''
                     scales: { y: { ticks: { color: '#9ca3af' }, grid: { display: false } }, x: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } } }
                 }
             });
-            
+
+            // Distribution donut chart (top 10 + Others)
+            if (distChart) distChart.destroy();
+            const colors = ['#60a5fa', '#f59e0b', '#4ade80', '#f87171', '#a78bfa', '#14b8a6', '#fb923c', '#f97316', '#06b6d4', '#8b5cf6'];
+            const top10 = summary.top_25.slice(0, 10);
+            const othersCount = summary.top_25.slice(10).reduce((sum, c) => sum + c.provider_count, 0);
+            distChart = new Chart(document.getElementById('distChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: [...top10.map(c => c.country_code.toUpperCase()), 'Others'],
+                    datasets: [{
+                        data: [...top10.map(c => c.provider_count), othersCount],
+                        backgroundColor: colors
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#9ca3af' } } }
+                }
+            });
+
+            // Regional chart
+            if (regionChart) regionChart.destroy();
+            const regionColors = regions.map(r => r.delta_24h >= 0 ? '#4ade80' : '#f87171');
+            regionChart = new Chart(document.getElementById('regionChart'), {
+                type: 'bar',
+                data: {
+                    labels: regions.map(r => r.region),
+                    datasets: [{
+                        label: 'Providers',
+                        data: regions.map(r => r.total),
+                        backgroundColor: regionColors
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { display: false } }, x: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } } }
+                }
+            });
+
+            // Populate at-risk lists
+            document.getElementById('disappeared-list').innerHTML = atRisk.disappeared.length === 0 ? '<span style="color: #9ca3af;">None</span>' : atRisk.disappeared.map(c => `<div>${c.country_name} (had ${c.prev_count})</div>`).join('');
+            document.getElementById('near-zero-list').innerHTML = atRisk.near_zero.length === 0 ? '<span style="color: #9ca3af;">None</span>' : atRisk.near_zero.map(c => `<div>${c.country_name}: ${c.provider_count} (${c.delta_24h >= 0 ? '+' : ''}${c.delta_24h})</div>`).join('');
+
             // Gainers and losers tables
             updateDetailedMoversTable('gainers-table', moversDetail.gainers);
             updateDetailedMoversTable('losers-table', moversDetail.losers);
@@ -734,7 +961,40 @@ DASHBOARD_HTML = '''
 
         renderComparisonInputs();
 
-        
+        // Anomaly threshold handler
+        document.getElementById('anomaly-threshold').addEventListener('change', (e) => {
+            anomalyThreshold = e.target.value;
+            localStorage.setItem('anomalyThreshold', anomalyThreshold);
+            loadData();
+        });
+
+        // CSV export function
+        function exportCSV(tableId, filename) {
+            const table = document.getElementById(tableId);
+            let csv = [];
+            const rows = table.querySelectorAll('tr');
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td, th');
+                const rowData = Array.from(cells).map(cell => `"${cell.textContent.replace(/"/g, '""')}"`).join(',');
+                csv.push(rowData);
+            });
+            const csvContent = csv.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename || 'export.csv';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Add CSV export buttons to table headers
+        document.querySelector('#gainers-table h3')?.parentElement.querySelector('h3').innerHTML += ' <button onclick="exportCSV(\'gainers-table\', \'gainers.csv\')" style="float: right; background: #4ade80; color: #0f1419; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">↓ CSV</button>';
+        document.querySelector('#losers-table h3')?.parentElement.querySelector('h3').innerHTML += ' <button onclick="exportCSV(\'losers-table\', \'losers.csv\')" style="float: right; background: #4ade80; color: #0f1419; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">↓ CSV</button>';
+
+        // Set initial threshold value on page load
+        document.getElementById('anomaly-threshold').value = anomalyThreshold;
+
         function startRefreshTimer() {
             let seconds = 300;
             refreshInterval = setInterval(() => {
