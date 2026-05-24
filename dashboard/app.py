@@ -168,13 +168,13 @@ def api_anomalies():
                     ELSE 0 END as pct_change
         FROM current c
         LEFT JOIN past p ON c.country_code = p.country_code
-        WHERE ABS(CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0)) > 0.15
-        ORDER BY pct_change DESC
+        WHERE CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0) < -0.15
+        ORDER BY pct_change ASC
     """, (latest, hour_ago))
 
     anomalies = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return jsonify({'anomalies': anomalies, 'threshold': 0.15})
+    return jsonify({'anomalies': anomalies, 'threshold': -0.15})
 
 @app.route('/api/growth-projection')
 def api_growth_projection():
@@ -192,16 +192,19 @@ def api_growth_projection():
 
     daily_growth = current - past
     growth_rate = (daily_growth / past * 100) if past > 0 else 0
-    projected_30d = int(current + (daily_growth * 30))
-    projected_90d = int(current + (daily_growth * 90))
+
+    # Cap projections at reasonable bounds to avoid astronomical numbers from data anomalies
+    capped_growth = max(-1000, min(1000, daily_growth))
+    projected_30d = int(current + (capped_growth * 30))
+    projected_90d = int(current + (capped_growth * 90))
 
     conn.close()
     return jsonify({
         'current': current,
         'daily_growth': daily_growth,
-        'growth_rate': growth_rate,
-        'projected_30d': projected_30d,
-        'projected_90d': projected_90d
+        'growth_rate': max(-100, min(100, growth_rate)),
+        'projected_30d': max(0, projected_30d),
+        'projected_90d': max(0, projected_90d)
     })
 
 @app.route('/api/churn/<code>')
@@ -229,6 +232,32 @@ def api_churn(code):
 
     conn.close()
     return jsonify({'churn_rate': avg_change, 'volatility': volatility, 'data': data})
+
+@app.route('/api/country-stats/<code>')
+def api_country_stats(code):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT timestamp, provider_count
+        FROM provider_counts
+        WHERE country_code = ?
+        ORDER BY timestamp DESC LIMIT 24
+    """, (code.lower(),))
+
+    data = [{'timestamp': row[0], 'count': row[1]} for row in cursor.fetchall()]
+    data.reverse()
+
+    if len(data) < 2:
+        conn.close()
+        return jsonify({'volatility': 'N/A', 'churn_rate': 0})
+
+    changes = [abs(data[i+1]['count'] - data[i]['count']) for i in range(len(data)-1)]
+    avg_change = sum(changes) / len(changes) if changes else 0
+    volatility = 'high' if avg_change > 100 else 'medium' if avg_change > 50 else 'low'
+
+    conn.close()
+    return jsonify({'volatility': volatility, 'churn_rate': round(avg_change, 1)})
 
 @app.route('/api/comparison/<code1>/<code2>')
 def api_comparison(code1, code2):
@@ -470,17 +499,8 @@ DASHBOARD_HTML = '''
         </div>
 
         <div class="table-card">
-            <h3>Compare Countries</h3>
-            <div class="comparison-container">
-                <div class="comparison-input">
-                    <label style="font-size: 12px; color: #9ca3af; margin-bottom: 8px; display: block;">Country 1</label>
-                    <input type="text" id="compare-code1" placeholder="e.g., us" maxlength="2" style="max-width: 100px;">
-                </div>
-                <div class="comparison-input">
-                    <label style="font-size: 12px; color: #9ca3af; margin-bottom: 8px; display: block;">Country 2</label>
-                    <input type="text" id="compare-code2" placeholder="e.g., de" maxlength="2" style="max-width: 100px;">
-                </div>
-            </div>
+            <h3>Compare Countries <button id="add-comparison-btn" style="float: right; background: #4ade80; color: #0f1419; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">+ Add Country</button></h3>
+            <div id="comparison-inputs" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;"></div>
             <div style="position: relative; height: 300px;">
                 <canvas id="comparisonChart"></canvas>
             </div>
@@ -578,23 +598,33 @@ DASHBOARD_HTML = '''
             updateDetailedMoversTable('losers-table', moversDetail.losers);
         }
         
-        function updateDetailedMoversTable(tableId, data) {
+        async function updateDetailedMoversTable(tableId, data) {
             const windows = ['15m', '1h', '2h', '3h', '6h', '12h', '24h', '2d', '3d', '4d', '5d', '6d', '7d'];
             const tbody = document.querySelector(`#${tableId} tbody`);
-            tbody.innerHTML = data.map(row => {
+
+            tbody.innerHTML = await Promise.all(data.map(async (row) => {
                 const deltaColumns = windows.map(w => {
                     const delta = row.deltas[w] || 0;
                     const color = delta >= 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#9ca3af';
                     return `<td style="color: ${color}">${(delta >= 0 ? '+' : '') + delta.toLocaleString()}</td>`;
                 }).join('');
+
+                let stats = '';
+                try {
+                    const resp = await fetch(`/api/country-stats/${row.code.toLowerCase()}`);
+                    const s = await resp.json();
+                    const vol_color = s.volatility === 'high' ? '#f87171' : s.volatility === 'medium' ? '#facc15' : '#4ade80';
+                    stats = `<span class="volatility" style="color: ${vol_color};" title="Churn: ${s.churn_rate}/h">${s.volatility}</span>`;
+                } catch(e) {}
+
                 return `
                     <tr>
-                        <td>${row.name}</td>
+                        <td>${row.name} ${stats}</td>
                         <td>${row.current.toLocaleString()}</td>
                         ${deltaColumns}
                     </tr>
                 `;
-            }).join('');
+            })).then(rows => rows.join(''));
         }
         
         document.getElementById('country-search').addEventListener('keypress', async (e) => {
@@ -623,42 +653,81 @@ DASHBOARD_HTML = '''
         });
 
         let comparisonChart;
-        document.getElementById('compare-code1').addEventListener('change', updateComparison);
-        document.getElementById('compare-code2').addEventListener('change', updateComparison);
+        let comparisonCountries = ['us', 'de'];
+        const colors = ['#60a5fa', '#f59e0b', '#4ade80', '#f87171', '#a78bfa', '#14b8a6'];
+
+        document.getElementById('add-comparison-btn').addEventListener('click', () => {
+            const input = document.createElement('div');
+            input.style.cssText = 'background: #1a1f26; border: 1px solid #2d3748; padding: 10px; border-radius: 4px; display: flex; gap: 5px; align-items: center;';
+            const idx = comparisonCountries.length;
+            input.innerHTML = `
+                <input type="text" class="comp-input" data-idx="${idx}" placeholder="e.g., us" maxlength="2" style="max-width: 60px;">
+                <button class="remove-comp" style="background: #f87171; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 10px;">Remove</button>
+            `;
+            document.getElementById('comparison-inputs').appendChild(input);
+            input.querySelector('.comp-input').addEventListener('change', updateComparison);
+            input.querySelector('.remove-comp').addEventListener('click', () => {
+                comparisonCountries.splice(idx, 1);
+                input.remove();
+                updateComparison();
+            });
+        });
+
+        function renderComparisonInputs() {
+            const container = document.getElementById('comparison-inputs');
+            container.innerHTML = comparisonCountries.map((code, idx) => `
+                <div style="background: #1a1f26; border: 1px solid #2d3748; padding: 10px; border-radius: 4px; display: flex; gap: 5px; align-items: center;">
+                    <input type="text" class="comp-input" data-idx="${idx}" value="${code}" maxlength="2" style="max-width: 60px;">
+                    <button class="remove-comp" data-idx="${idx}" style="background: #f87171; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 10px;">Remove</button>
+                </div>
+            `).join('');
+
+            container.querySelectorAll('.comp-input').forEach(inp => {
+                inp.addEventListener('change', (e) => {
+                    comparisonCountries[parseInt(e.target.dataset.idx)] = e.target.value.toLowerCase();
+                    updateComparison();
+                });
+            });
+            container.querySelectorAll('.remove-comp').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    comparisonCountries.splice(parseInt(e.target.dataset.idx), 1);
+                    renderComparisonInputs();
+                    updateComparison();
+                });
+            });
+        }
 
         async function updateComparison() {
-            const code1 = document.getElementById('compare-code1').value.toLowerCase();
-            const code2 = document.getElementById('compare-code2').value.toLowerCase();
-            if (!code1 || !code2) return;
+            const validCodes = comparisonCountries.filter(c => c.length === 2);
+            if (validCodes.length < 2) return;
 
-            const data = await fetch(`/api/comparison/${code1}/${code2}`).then(r => r.json()).catch(() => ({ data1: [], data2: [] }));
-            if (!data.data1.length || !data.data2.length) return;
+            const allData = {};
+            for (let code of validCodes) {
+                const resp = await fetch(`/api/country/${code}`).catch(() => null);
+                if (resp) allData[code] = await resp.json();
+            }
 
+            if (!Object.keys(allData).length) return;
+
+            const allTs = [...new Set(Object.values(allData).flat().map(d => d.timestamp))].sort();
             if (comparisonChart) comparisonChart.destroy();
-            const ts = [...new Set([...data.data1, ...data.data2].map(d => d.timestamp))].sort();
+
+            const datasets = validCodes.map((code, idx) => ({
+                label: code.toUpperCase(),
+                data: allTs.map(t => {
+                    const entry = (allData[code] || []).find(x => x.timestamp === t);
+                    return entry ? entry.count : null;
+                }),
+                borderColor: colors[idx % colors.length],
+                fill: false,
+                tension: 0.3
+            }));
+
             comparisonChart = new Chart(document.getElementById('comparisonChart'), {
                 type: 'line',
                 data: {
-                    labels: ts.map(t => new Date(t).toLocaleDateString()),
-                    datasets: [{
-                        label: code1.toUpperCase(),
-                        data: ts.map(t => {
-                            const d = data.data1.find(x => x.timestamp === t);
-                            return d ? d.count : null;
-                        }),
-                        borderColor: '#60a5fa',
-                        fill: false,
-                        tension: 0.3
-                    }, {
-                        label: code2.toUpperCase(),
-                        data: ts.map(t => {
-                            const d = data.data2.find(x => x.timestamp === t);
-                            return d ? d.count : null;
-                        }),
-                        borderColor: '#f59e0b',
-                        fill: false,
-                        tension: 0.3
-                    }]
+                    labels: allTs.map(t => new Date(t).toLocaleDateString()),
+                    datasets
                 },
                 options: {
                     responsive: true,
@@ -668,6 +737,8 @@ DASHBOARD_HTML = '''
                 }
             });
         }
+
+        renderComparisonInputs();
 
         document.querySelectorAll('.toggle-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
