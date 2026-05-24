@@ -552,7 +552,7 @@ DASHBOARD_HTML = '''
         .spinner { display: inline-block; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .last-update { color: #9ca3af; font-size: 12px; margin-top: 10px; }
-        .alert-banner { background: #7f1d1d; border: 1px solid #991b1b; color: #fecaca; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; }
+        .alert-banner { background: #7f1d1d; border: 1px solid #991b1b; color: #fecaca; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; max-width: 800px; }
         .alert-banner.show { display: block; }
         .alert-banner strong { color: #fee2e2; }
         .controls { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
