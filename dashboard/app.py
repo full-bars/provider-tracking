@@ -682,14 +682,14 @@ DASHBOARD_HTML = '''
             const regions = await fetch('/api/regions').then(r => r.json()).catch(() => ([]));
             const atRisk = await fetch('/api/at-risk').then(r => r.json()).catch(() => ({ disappeared: [], near_zero: [] }));
 
-            // Handle anomalies - show all in scrolling ticker
+            // Handle anomalies - show all with delta and percentage
             const anomalyBanner = document.getElementById('anomaly-alert');
             if (anomalies.anomalies && anomalies.anomalies.length > 0) {
                 const anomalyText = anomalies.anomalies.map(a => {
-                    const sign = a.pct_change >= 0 ? '+' : '';
-                    return `${a.country_name} ${sign}${a.pct_change.toFixed(1)}%`;
+                    const sign = a.delta >= 0 ? '+' : '';
+                    return `${a.country_name} ${sign}${a.delta} (${a.pct_change >= 0 ? '+' : ''}${a.pct_change.toFixed(1)}%)`;
                 }).join('  •  ');
-                document.getElementById('anomaly-text').textContent = anomalyText + '  •  ';
+                document.getElementById('anomaly-text').textContent = anomalyText;
                 anomalyBanner.classList.add('show');
             } else {
                 anomalyBanner.classList.remove('show');
