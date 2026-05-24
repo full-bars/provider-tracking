@@ -15,10 +15,11 @@ Real-time monitoring and analytics dashboard for URnetwork provider metrics acro
 
 ## Tech Stack
 
-- **Backend** — Python Flask with SQLite
+- **Backend** — Python Flask with SQLite (primary), or Rust with Actix-web (experimental)
 - **Frontend** — Vanilla JavaScript with Chart.js for visualizations
 - **Data Collection** — Hourly URnetwork API polling
 - **Deployment** — systemd service on Linux
+- **Reverse Proxy** — Caddy for HTTPS and multi-domain routing
 
 ## Installation
 
@@ -201,6 +202,49 @@ python3 app.py
 ```
 
 Server runs on `http://localhost:5000` with auto-reload disabled (edit `app.run()` to enable debug mode).
+
+## Rust Backend (Experimental)
+
+A high-performance Rust reimplementation is available in `backend-rs/` using Actix-web and async SQLx. The Rust backend provides identical API compatibility with lower memory footprint and higher throughput.
+
+### Building
+
+```bash
+cd backend-rs
+cargo build --release
+```
+
+Binary output: `target/release/provider_tracker` (~9.8 MB)
+
+### Running Rust Backend
+
+Set DATABASE_URL environment variable (optional, defaults to `~/provider_tracking/providers.db`):
+
+```bash
+DATABASE_URL="sqlite:///path/to/providers.db" ./target/release/provider_tracker
+```
+
+Server runs on `http://0.0.0.0:5001`
+
+### Deployment
+
+Deploy to LA1 alongside Python version:
+
+```bash
+scp backend-rs/target/release/provider_tracker user@100.70.15.86:/home/user/provider_tracking/
+scp provider-dashboard-rs.service user@100.70.15.86:/tmp/
+ssh user@100.70.15.86 'sudo mv /tmp/provider-dashboard-rs.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable provider-dashboard-rs && sudo systemctl start provider-dashboard-rs'
+```
+
+Update Caddy configuration to route subdomain:
+
+```
+provider-rs.urnetwork.mywire.org {
+	reverse_proxy localhost:5001
+}
+```
+
+Both Flask (port 5000) and Rust (port 5001) versions can run simultaneously, sharing the same SQLite database.
 
 ## License
 
