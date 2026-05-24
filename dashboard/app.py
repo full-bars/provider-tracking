@@ -84,13 +84,13 @@ def api_summary():
     day_ago_total = cursor.fetchone()['total'] or current_total
     day_delta = current_total - day_ago_total
     
-    # Top 25
+    # Top 10
     cursor.execute("""
         SELECT country_name, country_code, provider_count
         FROM provider_counts WHERE timestamp = ?
-        ORDER BY provider_count DESC LIMIT 25
+        ORDER BY provider_count DESC LIMIT 10
     """, (latest,))
-    top_25 = [dict(row) for row in cursor.fetchall()]
+    top_10 = [dict(row) for row in cursor.fetchall()]
 
     conn.close()
     return jsonify({
@@ -98,7 +98,7 @@ def api_summary():
         'total': current_total,
         'hour_delta': hour_delta,
         'day_delta': day_delta,
-        'top_25': top_25
+        'top_10': top_10
     })
 
 @app.route('/api/network_total')
@@ -704,8 +704,8 @@ DASHBOARD_HTML = '''
 
             // Update stats
             document.getElementById('total').textContent = summary.total.toLocaleString();
-            document.getElementById('top-country').textContent = summary.top_25[0]?.provider_count.toLocaleString() || '-';
-            document.getElementById('top-country-code').textContent = summary.top_25[0]?.country_name || '-';
+            document.getElementById('top-country').textContent = summary.top_10[0]?.provider_count.toLocaleString() || '-';
+            document.getElementById('top-country-code').textContent = summary.top_10[0]?.country_name || '-';
 
             const dayDelta = summary.day_delta;
             document.getElementById('day-delta').textContent = (dayDelta >= 0 ? '+' : '') + dayDelta.toLocaleString();
@@ -746,15 +746,15 @@ DASHBOARD_HTML = '''
                 }
             });
 
-            // Top 25 bar chart
+            // Top 10 bar chart
             if (top25Chart) top25Chart.destroy();
             top25Chart = new Chart(document.getElementById('top25Chart'), {
                 type: 'bar',
                 data: {
-                    labels: summary.top_25.map(c => c.country_code.toUpperCase()),
+                    labels: summary.top_10.map(c => c.country_code.toUpperCase()),
                     datasets: [{
                         label: 'Providers',
-                        data: summary.top_25.map(c => c.provider_count),
+                        data: summary.top_10.map(c => c.provider_count),
                         backgroundColor: '#4ade80'
                     }]
                 },
@@ -767,17 +767,15 @@ DASHBOARD_HTML = '''
                 }
             });
 
-            // Distribution donut chart (top 10 + Others)
+            // Distribution donut chart (top 10)
             if (distChart) distChart.destroy();
             const colors = ['#60a5fa', '#f59e0b', '#4ade80', '#f87171', '#a78bfa', '#14b8a6', '#fb923c', '#f97316', '#06b6d4', '#8b5cf6'];
-            const top10 = summary.top_25.slice(0, 10);
-            const othersCount = summary.top_25.slice(10).reduce((sum, c) => sum + c.provider_count, 0);
             distChart = new Chart(document.getElementById('distChart'), {
                 type: 'doughnut',
                 data: {
-                    labels: [...top10.map(c => c.country_code.toUpperCase()), 'Others'],
+                    labels: summary.top_10.map(c => c.country_code.toUpperCase()),
                     datasets: [{
-                        data: [...top10.map(c => c.provider_count), othersCount],
+                        data: summary.top_10.map(c => c.provider_count),
                         backgroundColor: colors
                     }]
                 },
