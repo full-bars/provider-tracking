@@ -672,11 +672,21 @@ DASHBOARD_HTML = '''
     <script>
         let totalChart, top25Chart, distChart, regionChart, countryChart;
         let refreshInterval;
-        
+        let countryMap = {}; // Maps country names and codes to codes
+
         async function loadData() {
             const summary = await fetch('/api/summary').then(r => r.json());
             const networkTotal = await fetch('/api/network_total').then(r => r.json());
             const moversDetail = await fetch('/api/movers-detailed').then(r => r.json());
+
+            // Build country name → code mapping from movers data
+            if (moversDetail.gainers) {
+                moversDetail.gainers.forEach(country => {
+                    const code = country.code.toLowerCase();
+                    countryMap[code] = code;
+                    countryMap[country.name.toLowerCase()] = code;
+                });
+            }
             const anomalies = await fetch('/api/anomalies?threshold=15').then(r => r.json()).catch(() => ({ anomalies: [] }));
             const growth = await fetch('/api/growth-projection').then(r => r.json()).catch(() => ({}));
             const regions = await fetch('/api/regions').then(r => r.json()).catch(() => ([]));
@@ -882,18 +892,34 @@ DASHBOARD_HTML = '''
             document.querySelector('.comp-input:last-of-type')?.focus();
         });
 
+        function resolveCountryCode(input) {
+            const lower = input.toLowerCase().trim();
+            // If it's already a valid code (2 chars), check if it's valid
+            if (lower.length === 2 && countryMap[lower]) return countryMap[lower];
+            // Try to find by country name
+            if (countryMap[lower]) return countryMap[lower];
+            // Return as-is if not found (for fuzzy matching or user error)
+            return lower;
+        }
+
         function renderComparisonInputs() {
             const container = document.getElementById('comparison-inputs');
-            container.innerHTML = comparisonCountries.map((code, idx) => `
+            container.innerHTML = comparisonCountries.map((code, idx) => {
+                const displayCode = code.length === 2 ? code : '';
+                return `
                 <div style="background: #1a1f26; border: 1px solid #2d3748; padding: 10px; border-radius: 4px; display: flex; gap: 5px; align-items: center;">
-                    <input type="text" class="comp-input" data-idx="${idx}" value="${code}" maxlength="2" style="max-width: 60px;">
+                    <input type="text" class="comp-input" data-idx="${idx}" value="${displayCode}" placeholder="e.g., us or United States" maxlength="40" style="width: 140px;">
                     <button class="remove-comp" data-idx="${idx}" style="background: #f87171; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 10px;">Remove</button>
                 </div>
-            `).join('');
+            `;
+            }).join('');
 
             container.querySelectorAll('.comp-input').forEach(inp => {
                 inp.addEventListener('change', (e) => {
-                    comparisonCountries[parseInt(e.target.dataset.idx)] = e.target.value.toLowerCase();
+                    const resolved = resolveCountryCode(e.target.value);
+                    comparisonCountries[parseInt(e.target.dataset.idx)] = resolved;
+                    // Update display to show the code
+                    if (resolved.length === 2) e.target.value = resolved;
                     updateComparison();
                 });
             });
