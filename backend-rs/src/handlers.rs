@@ -176,9 +176,9 @@ pub async fn api_movers(state: web::Data<AppState>) -> HttpResponse {
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
-    let hour_ago = format_time_offset(&latest, -1);
-    let day_ago = format_time_offset(&latest, -24);
-    let week_ago = format_time_offset(&latest, -168);
+    let hour_ago = format_time_offset(&latest, -60);
+    let day_ago = format_time_offset(&latest, -1440);
+    let week_ago = format_time_offset(&latest, -10080);
 
     let (hour_gainers, hour_losers) = db::get_movers(pool, &hour_ago, &latest).await.unwrap_or((vec![], vec![]));
     let (day_gainers, day_losers) = db::get_movers(pool, &day_ago, &latest).await.unwrap_or((vec![], vec![]));
@@ -249,16 +249,37 @@ pub async fn api_movers_detailed(state: web::Data<AppState>) -> HttpResponse {
         );
     }
 
-    // Sort by 24h delta, get top 50
-    let mut sorted: Vec<_> = country_data.values().cloned().collect();
-    sorted.sort_by(|a, b| {
+    // Get top 50 gainers (largest positive delta, sorted by country code for stability)
+    let mut gainers_vec: Vec<_> = country_data.values().cloned().collect();
+    gainers_vec.sort_by(|a, b| {
         let delta_a = a.get("deltas").and_then(|d| d.get("24h")).and_then(|v| v.as_i64()).unwrap_or(0);
         let delta_b = b.get("deltas").and_then(|d| d.get("24h")).and_then(|v| v.as_i64()).unwrap_or(0);
-        delta_b.cmp(&delta_a)
+        match delta_b.cmp(&delta_a) {
+            std::cmp::Ordering::Equal => {
+                let code_a = a.get("code").and_then(|v| v.as_str()).unwrap_or("");
+                let code_b = b.get("code").and_then(|v| v.as_str()).unwrap_or("");
+                code_a.cmp(code_b)
+            }
+            other => other,
+        }
     });
+    let gainers: Vec<_> = gainers_vec.into_iter().take(50).collect();
 
-    let gainers: Vec<_> = sorted.iter().take(50).cloned().collect();
-    let losers: Vec<_> = sorted.iter().rev().take(50).cloned().collect();
+    // Get top 50 losers (smallest negative delta, sorted by country code for stability)
+    let mut losers_vec: Vec<_> = country_data.values().cloned().collect();
+    losers_vec.sort_by(|a, b| {
+        let delta_a = a.get("deltas").and_then(|d| d.get("24h")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let delta_b = b.get("deltas").and_then(|d| d.get("24h")).and_then(|v| v.as_i64()).unwrap_or(0);
+        match delta_a.cmp(&delta_b) {
+            std::cmp::Ordering::Equal => {
+                let code_a = a.get("code").and_then(|v| v.as_str()).unwrap_or("");
+                let code_b = b.get("code").and_then(|v| v.as_str()).unwrap_or("");
+                code_a.cmp(code_b)
+            }
+            other => other,
+        }
+    });
+    let losers: Vec<_> = losers_vec.into_iter().take(50).collect();
 
     HttpResponse::Ok().json(json!({"gainers": gainers, "losers": losers}))
 }
@@ -351,11 +372,15 @@ pub async fn api_growth_projection(state: web::Data<AppState>) -> HttpResponse {
     }))
 }
 
-// Helper function
-fn format_time_offset(timestamp: &str, hours: i32) -> String {
+// Helper function - offset is in minutes
+fn format_time_offset(timestamp: &str, offset_minutes: i32) -> String {
+    // Try RFC3339 first, then fall back to naive datetime format
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(timestamp) {
-        let offset_dt = dt + Duration::hours(hours as i64);
+        let offset_dt = dt + Duration::minutes(offset_minutes as i64);
         offset_dt.format("%Y-%m-%d %H:%M:%S").to_string()
+    } else if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S") {
+        let offset_ndt = ndt + Duration::minutes(offset_minutes as i64);
+        offset_ndt.format("%Y-%m-%d %H:%M:%S").to_string()
     } else {
         timestamp.to_string()
     }
