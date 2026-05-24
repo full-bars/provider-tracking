@@ -433,12 +433,6 @@ DASHBOARD_HTML = '''
             <strong>⚠️ Anomaly Detected:</strong> <span id="anomaly-text"></span>
         </div>
 
-        <div class="controls">
-            <span style="font-size: 12px; color: #9ca3af;">Time Range:</span>
-            <button class="toggle-btn active" data-range="24h">Last 24h</button>
-            <button class="toggle-btn" data-range="7d">Last 7d</button>
-            <button class="toggle-btn" data-range="30d">Last 30d</button>
-        </div>
 
         <div class="header" id="header">
             <div class="stat-card">
@@ -740,12 +734,6 @@ DASHBOARD_HTML = '''
 
         renderComparisonInputs();
 
-        document.querySelectorAll('.toggle-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-            });
-        });
         
         function startRefreshTimer() {
             let seconds = 300;
