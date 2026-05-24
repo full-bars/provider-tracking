@@ -552,7 +552,7 @@ DASHBOARD_HTML = '''
         .spinner { display: inline-block; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .last-update { color: #9ca3af; font-size: 12px; margin-top: 10px; }
-        .alert-banner { background: #7f1d1d; border: 1px solid #991b1b; color: #fecaca; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; max-width: 800px; }
+        .alert-banner { background: #7f1d1d; border: 1px solid #991b1b; color: #fecaca; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; }
         .alert-banner.show { display: block; }
         .alert-banner strong { color: #fee2e2; }
         .controls { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
@@ -572,11 +572,11 @@ DASHBOARD_HTML = '''
     <div class="container">
         <h1>Provider Network Dashboard</h1>
 
-        <div class="alert-banner" id="anomaly-alert" style="overflow: hidden;">
-            <strong>⚠️ Anomalies:</strong>
-            <span id="anomaly-ticker" style="display: inline-block; margin-left: 8px; max-width: 60%; overflow: hidden; vertical-align: middle;">
+        <div class="alert-banner" id="anomaly-alert" style="display: flex; align-items: center; overflow: hidden; gap: 12px;">
+            <strong style="flex-shrink: 0;">⚠️ Anomalies:</strong>
+            <div id="anomaly-ticker" style="flex: 1; overflow: hidden; min-width: 0;">
                 <span id="anomaly-text" style="animation: scroll-left 25s linear infinite; display: inline-block; white-space: nowrap;"></span>
-            </span>
+            </div>
         </div>
         <style>
             @keyframes scroll-left {
