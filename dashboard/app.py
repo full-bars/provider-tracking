@@ -607,8 +607,8 @@ DASHBOARD_HTML = '''
                 <div class="chart-container"><canvas id="totalChart"></canvas></div>
             </div>
             <div class="chart-card">
-                <h3>Top 25 Countries</h3>
-                <div class="chart-container" style="height: 500px;"><canvas id="top25Chart"></canvas></div>
+                <h3>Top 10 Countries</h3>
+                <div class="chart-container" style="height: 300px;"><canvas id="top25Chart"></canvas></div>
             </div>
         </div>
 
