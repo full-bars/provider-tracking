@@ -356,7 +356,7 @@
                     const resp = await fetch(`/api/country-stats/${row.code.toLowerCase()}`);
                     const s = await resp.json();
                     const vol_color = s.volatility === 'high' ? '#f87171' : s.volatility === 'medium' ? '#facc15' : '#4ade80';
-                    stats = `<span class="volatility" style="color: ${vol_color};" title="Churn: ${s.churn_rate}/h">${s.volatility}</span>`;
+                    stats = `<span class="volatility" style="color: ${vol_color};" title="Churn: ${s.churn_rate}/h">${s.volatility} (${s.churn_rate}/h)</span>`;
                 } catch(e) {}
 
                 return `
