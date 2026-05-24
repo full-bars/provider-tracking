@@ -968,29 +968,6 @@ DASHBOARD_HTML = '''
             loadData();
         });
 
-        // CSV export function
-        function exportCSV(tableId, filename) {
-            const table = document.getElementById(tableId);
-            let csv = [];
-            const rows = table.querySelectorAll('tr');
-            rows.forEach(row => {
-                const cells = row.querySelectorAll('td, th');
-                const rowData = Array.from(cells).map(cell => `"${cell.textContent.replace(/"/g, '""')}"`).join(',');
-                csv.push(rowData);
-            });
-            const csvContent = csv.join('\n');
-            const blob = new Blob([csvContent], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename || 'export.csv';
-            a.click();
-            window.URL.revokeObjectURL(url);
-        }
-
-        // Add CSV export buttons to table headers
-        document.querySelector('#gainers-table h3')?.parentElement.querySelector('h3').innerHTML += ' <button onclick="exportCSV(\'gainers-table\', \'gainers.csv\')" style="float: right; background: #4ade80; color: #0f1419; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">↓ CSV</button>';
-        document.querySelector('#losers-table h3')?.parentElement.querySelector('h3').innerHTML += ' <button onclick="exportCSV(\'losers-table\', \'losers.csv\')" style="float: right; background: #4ade80; color: #0f1419; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">↓ CSV</button>';
 
         // Set initial threshold value on page load
         document.getElementById('anomaly-threshold').value = anomalyThreshold;
