@@ -687,6 +687,26 @@ DASHBOARD_HTML = '''
                     countryMap[country.name.toLowerCase()] = code;
                 });
             }
+
+            // Add common country aliases
+            const aliases = {
+                'holland': 'nl', 'netherlands': 'nl',
+                'uk': 'gb', 'england': 'gb', 'scotland': 'gb', 'wales': 'gb',
+                'south korea': 'kr', 'korea': 'kr',
+                'china': 'cn', 'prc': 'cn',
+                'united states': 'us', 'usa': 'us', 'america': 'us',
+                'united kingdom': 'gb',
+                'hong kong': 'hk',
+                'new zealand': 'nz',
+                'south africa': 'za',
+                'united arab emirates': 'ae', 'emirates': 'ae', 'dubai': 'ae',
+                'czech republic': 'cz', 'czechia': 'cz',
+                'costa rica': 'cr',
+                'el salvador': 'sv',
+            };
+            for (const [alias, code] of Object.entries(aliases)) {
+                if (countryMap[code]) countryMap[alias] = code;
+            }
             const anomalies = await fetch('/api/anomalies?threshold=15').then(r => r.json()).catch(() => ({ anomalies: [] }));
             const growth = await fetch('/api/growth-projection').then(r => r.json()).catch(() => ({}));
             const regions = await fetch('/api/regions').then(r => r.json()).catch(() => ([]));
@@ -992,6 +1012,7 @@ DASHBOARD_HTML = '''
         }
         
         loadData();
+        updateComparison(); // Initialize default comparison chart
         startRefreshTimer();
     </script>
 </body>
