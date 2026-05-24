@@ -573,9 +573,17 @@ DASHBOARD_HTML = '''
         <h1>Provider Network Dashboard</h1>
 
         <div class="alert-banner" id="anomaly-alert">
-            <strong>⚠️ Anomaly Detected:</strong> <span id="anomaly-text"></span>
-            <span style="margin-left: 20px; font-size: 11px;">Threshold: <input id="anomaly-threshold" type="number" value="15" min="1" max="100" style="width: 45px; background: #1a1f26; border: 1px solid #991b1b; color: #fecaca; padding: 4px;"> %</span>
+            <strong>⚠️ Anomalies:</strong>
+            <div id="anomaly-ticker" style="display: inline-block; margin-left: 10px; max-width: 80%; overflow: hidden; vertical-align: middle;">
+                <span id="anomaly-text" style="animation: scroll-left 20s linear infinite; display: inline-block; white-space: nowrap;"></span>
+            </div>
         </div>
+        <style>
+            @keyframes scroll-left {
+                0% { transform: translateX(100%); }
+                100% { transform: translateX(-100%); }
+            }
+        </style>
 
 
         <div class="header" id="header">
@@ -673,22 +681,21 @@ DASHBOARD_HTML = '''
     <script>
         let totalChart, top25Chart, distChart, regionChart, countryChart;
         let refreshInterval;
-        let anomalyThreshold = localStorage.getItem('anomalyThreshold') || '15';
         
         async function loadData() {
             const summary = await fetch('/api/summary').then(r => r.json());
             const networkTotal = await fetch('/api/network_total').then(r => r.json());
             const moversDetail = await fetch('/api/movers-detailed').then(r => r.json());
-            const anomalies = await fetch(`/api/anomalies?threshold=${anomalyThreshold}`).then(r => r.json()).catch(() => ({ anomalies: [] }));
+            const anomalies = await fetch('/api/anomalies?threshold=15').then(r => r.json()).catch(() => ({ anomalies: [] }));
             const growth = await fetch('/api/growth-projection').then(r => r.json()).catch(() => ({}));
             const regions = await fetch('/api/regions').then(r => r.json()).catch(() => ([]));
             const atRisk = await fetch('/api/at-risk').then(r => r.json()).catch(() => ({ disappeared: [], near_zero: [] }));
 
-            // Handle anomalies
+            // Handle anomalies - show all in scrolling ticker
             const anomalyBanner = document.getElementById('anomaly-alert');
             if (anomalies.anomalies && anomalies.anomalies.length > 0) {
-                const top = anomalies.anomalies[0];
-                document.getElementById('anomaly-text').textContent = `${top.country_name} lost ${Math.abs(top.pct_change).toFixed(1)}% providers in 1h`;
+                const anomalyText = anomalies.anomalies.map(a => `${a.country_name} -${Math.abs(a.pct_change).toFixed(1)}%`).join('  •  ');
+                document.getElementById('anomaly-text').textContent = anomalyText + '  •  ';
                 anomalyBanner.classList.add('show');
             } else {
                 anomalyBanner.classList.remove('show');
@@ -958,17 +965,6 @@ DASHBOARD_HTML = '''
         }
 
         renderComparisonInputs();
-
-        // Anomaly threshold handler
-        document.getElementById('anomaly-threshold').addEventListener('change', (e) => {
-            anomalyThreshold = e.target.value;
-            localStorage.setItem('anomalyThreshold', anomalyThreshold);
-            loadData();
-        });
-
-
-        // Set initial threshold value on page load
-        document.getElementById('anomaly-threshold').value = anomalyThreshold;
 
         function startRefreshTimer() {
             let seconds = 300;
