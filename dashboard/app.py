@@ -843,6 +843,12 @@ DASHBOARD_HTML = '''
             document.getElementById('disappeared-list').innerHTML = atRisk.disappeared.length === 0 ? '<span style="color: #9ca3af;">None</span>' : atRisk.disappeared.map(c => `<div>${c.country_name} (had ${c.prev_count})</div>`).join('');
             document.getElementById('near-zero-list').innerHTML = atRisk.near_zero.length === 0 ? '<span style="color: #9ca3af;">None</span>' : atRisk.near_zero.map(c => `<div>${c.country_name}: ${c.provider_count} (${c.delta_24h >= 0 ? '+' : ''}${c.delta_24h})</div>`).join('');
 
+            // Update default comparison to show top 5 countries
+            if (moversDetail.gainers && moversDetail.gainers.length >= 5) {
+                comparisonCountries = moversDetail.gainers.slice(0, 5).map(c => c.code.toLowerCase());
+                renderComparisonInputs();
+            }
+
             // Gainers and losers tables
             updateDetailedMoversTable('gainers-table', moversDetail.gainers);
             updateDetailedMoversTable('losers-table', moversDetail.losers);
