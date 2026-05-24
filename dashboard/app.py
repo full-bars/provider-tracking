@@ -187,7 +187,7 @@ def api_anomalies():
     cursor = conn.cursor()
 
     threshold_pct = float(request.args.get('threshold', 15))
-    threshold = -(threshold_pct / 100)
+    threshold = threshold_pct / 100
 
     latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
     hour_ago = (datetime.fromisoformat(latest) - timedelta(hours=1)).isoformat(sep=' ')
@@ -211,8 +211,8 @@ def api_anomalies():
                     ELSE 0 END as pct_change
         FROM current c
         LEFT JOIN past p ON c.country_code = p.country_code
-        WHERE CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0) < ?
-        ORDER BY pct_change ASC
+        WHERE ABS(CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0)) > ?
+        ORDER BY ABS(pct_change) DESC
     """, (latest, hour_ago, threshold))
 
     anomalies = [dict(row) for row in cursor.fetchall()]
@@ -572,10 +572,12 @@ DASHBOARD_HTML = '''
     <div class="container">
         <h1>Provider Network Dashboard</h1>
 
-        <div class="alert-banner" id="anomaly-alert">
-            <strong>⚠️ Anomalies:</strong>
-            <div id="anomaly-ticker" style="display: inline-block; margin-left: 10px; max-width: 80%; overflow: hidden; vertical-align: middle;">
-                <span id="anomaly-text" style="animation: scroll-left 20s linear infinite; display: inline-block; white-space: nowrap;"></span>
+        <div class="alert-banner" id="anomaly-alert" style="overflow: hidden; padding: 15px 20px;">
+            <div style="display: flex; align-items: center;">
+                <strong style="flex-shrink: 0; margin-right: 15px;">⚠️</strong>
+                <div id="anomaly-ticker" style="flex: 1; overflow: hidden;">
+                    <span id="anomaly-text" style="animation: scroll-left 30s linear infinite; display: inline-block; white-space: nowrap;"></span>
+                </div>
             </div>
         </div>
         <style>
@@ -694,7 +696,10 @@ DASHBOARD_HTML = '''
             // Handle anomalies - show all in scrolling ticker
             const anomalyBanner = document.getElementById('anomaly-alert');
             if (anomalies.anomalies && anomalies.anomalies.length > 0) {
-                const anomalyText = anomalies.anomalies.map(a => `${a.country_name} -${Math.abs(a.pct_change).toFixed(1)}%`).join('  •  ');
+                const anomalyText = anomalies.anomalies.map(a => {
+                    const sign = a.pct_change >= 0 ? '+' : '';
+                    return `${a.country_name} ${sign}${a.pct_change.toFixed(1)}%`;
+                }).join('  •  ');
                 document.getElementById('anomaly-text').textContent = anomalyText + '  •  ';
                 anomalyBanner.classList.add('show');
             } else {
