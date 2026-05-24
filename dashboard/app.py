@@ -889,7 +889,9 @@ DASHBOARD_HTML = '''
         document.getElementById('add-comparison-btn').addEventListener('click', () => {
             comparisonCountries.push('');
             renderComparisonInputs();
-            document.querySelector('.comp-input:last-of-type')?.focus();
+            // Focus on the newly added input (the one with empty value at the last index)
+            const newIdx = comparisonCountries.length - 1;
+            document.querySelector(`.comp-input[data-idx="${newIdx}"]`)?.focus();
         });
 
         function resolveCountryCode(input) {
