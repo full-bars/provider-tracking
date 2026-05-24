@@ -850,6 +850,7 @@ DASHBOARD_HTML = '''
             if (moversDetail.gainers && moversDetail.gainers.length >= 5) {
                 comparisonCountries = moversDetail.gainers.slice(0, 5).map(c => c.code.toLowerCase());
                 renderComparisonInputs();
+                await updateComparison(); // Redraw the comparison chart with new countries
             }
 
             // Gainers and losers tables
