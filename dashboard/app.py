@@ -572,13 +572,11 @@ DASHBOARD_HTML = '''
     <div class="container">
         <h1>Provider Network Dashboard</h1>
 
-        <div class="alert-banner" id="anomaly-alert" style="overflow: hidden; padding: 15px 20px;">
-            <div style="display: flex; align-items: center;">
-                <strong style="flex-shrink: 0; margin-right: 15px;">⚠️</strong>
-                <div id="anomaly-ticker" style="flex: 1; overflow: hidden;">
-                    <span id="anomaly-text" style="animation: scroll-left 30s linear infinite; display: inline-block; white-space: nowrap;"></span>
-                </div>
-            </div>
+        <div class="alert-banner" id="anomaly-alert" style="overflow: hidden;">
+            <strong>⚠️ Anomalies:</strong>
+            <span id="anomaly-ticker" style="display: inline-block; margin-left: 8px; max-width: 60%; overflow: hidden; vertical-align: middle;">
+                <span id="anomaly-text" style="animation: scroll-left 25s linear infinite; display: inline-block; white-space: nowrap;"></span>
+            </span>
         </div>
         <style>
             @keyframes scroll-left {
