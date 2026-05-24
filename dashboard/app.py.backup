@@ -141,119 +141,6 @@ def api_movers():
     conn.close()
     return jsonify(movers)
 
-@app.route('/api/anomalies')
-def api_anomalies():
-    conn = get_db()
-    cursor = conn.cursor()
-
-    latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
-    hour_ago = (datetime.fromisoformat(latest) - timedelta(hours=1)).isoformat(sep=' ')
-
-    cursor.execute("""
-        WITH current AS (
-            SELECT country_code, country_name, provider_count
-            FROM provider_counts WHERE timestamp = ?
-        ),
-        past AS (
-            SELECT country_code, provider_count
-            FROM provider_counts
-            WHERE timestamp = (
-                SELECT MAX(timestamp) FROM provider_counts WHERE timestamp <= ?
-            )
-        )
-        SELECT c.country_name, c.country_code, c.provider_count,
-               COALESCE(c.provider_count - p.provider_count, 0) as delta,
-               CASE WHEN p.provider_count > 0
-                    THEN CAST(c.provider_count - p.provider_count AS FLOAT) / p.provider_count * 100
-                    ELSE 0 END as pct_change
-        FROM current c
-        LEFT JOIN past p ON c.country_code = p.country_code
-        WHERE ABS(CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0)) > 0.15
-        ORDER BY pct_change DESC
-    """, (latest, hour_ago))
-
-    anomalies = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return jsonify({'anomalies': anomalies, 'threshold': 0.15})
-
-@app.route('/api/growth-projection')
-def api_growth_projection():
-    conn = get_db()
-    cursor = conn.cursor()
-
-    latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
-    day_ago = (datetime.fromisoformat(latest) - timedelta(days=1)).isoformat(sep=' ')
-
-    cursor.execute("SELECT SUM(provider_count) as total FROM provider_counts WHERE timestamp = ?", (latest,))
-    current = cursor.fetchone()['total']
-
-    cursor.execute("SELECT SUM(provider_count) as total FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", (day_ago,))
-    past = cursor.fetchone()['total'] or current
-
-    daily_growth = current - past
-    growth_rate = (daily_growth / past * 100) if past > 0 else 0
-    projected_30d = int(current + (daily_growth * 30))
-    projected_90d = int(current + (daily_growth * 90))
-
-    conn.close()
-    return jsonify({
-        'current': current,
-        'daily_growth': daily_growth,
-        'growth_rate': growth_rate,
-        'projected_30d': projected_30d,
-        'projected_90d': projected_90d
-    })
-
-@app.route('/api/churn/<code>')
-def api_churn(code):
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT timestamp, provider_count
-        FROM provider_counts
-        WHERE country_code = ?
-        ORDER BY timestamp DESC LIMIT 24
-    """, (code.lower(),))
-
-    data = [{'timestamp': row[0], 'count': row[1]} for row in cursor.fetchall()]
-    data.reverse()
-
-    if len(data) < 2:
-        conn.close()
-        return jsonify({'churn_rate': 0, 'volatility': 'N/A', 'data': data})
-
-    changes = [abs(data[i+1]['count'] - data[i]['count']) for i in range(len(data)-1)]
-    avg_change = sum(changes) / len(changes) if changes else 0
-    volatility = 'high' if avg_change > 100 else 'medium' if avg_change > 50 else 'low'
-
-    conn.close()
-    return jsonify({'churn_rate': avg_change, 'volatility': volatility, 'data': data})
-
-@app.route('/api/comparison/<code1>/<code2>')
-def api_comparison(code1, code2):
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT timestamp, provider_count
-        FROM provider_counts
-        WHERE country_code = ?
-        ORDER BY timestamp
-    """, (code1.lower(),))
-    data1 = [{'timestamp': row[0], 'code': code1.upper(), 'count': row[1]} for row in cursor.fetchall()]
-
-    cursor.execute("""
-        SELECT timestamp, provider_count
-        FROM provider_counts
-        WHERE country_code = ?
-        ORDER BY timestamp
-    """, (code2.lower(),))
-    data2 = [{'timestamp': row[0], 'code': code2.upper(), 'count': row[1]} for row in cursor.fetchall()]
-
-    conn.close()
-    return jsonify({'data1': data1, 'data2': data2})
-
 @app.route('/api/movers-detailed')
 def api_movers_detailed():
     conn = get_db()
@@ -380,37 +267,12 @@ DASHBOARD_HTML = '''
         .spinner { display: inline-block; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .last-update { color: #9ca3af; font-size: 12px; margin-top: 10px; }
-        .alert-banner { background: #7f1d1d; border: 1px solid #991b1b; color: #fecaca; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; }
-        .alert-banner.show { display: block; }
-        .alert-banner strong { color: #fee2e2; }
-        .controls { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
-        .toggle-btn { background: #2d3748; border: 1px solid #4a5568; color: #e0e6ed; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; }
-        .toggle-btn.active { background: #4ade80; color: #0f1419; }
-        .comparison-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-        .comparison-input { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; }
-        .comparison-input input { width: 100%; }
-        .indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
-        .indicator.stable { background: #4ade80; }
-        .indicator.warning { background: #facc15; }
-        .indicator.unstable { background: #f87171; }
-        .volatility { font-size: 10px; color: #9ca3af; font-style: italic; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Provider Network Dashboard</h1>
-
-        <div class="alert-banner" id="anomaly-alert">
-            <strong>⚠️ Anomaly Detected:</strong> <span id="anomaly-text"></span>
-        </div>
-
-        <div class="controls">
-            <span style="font-size: 12px; color: #9ca3af;">Time Range:</span>
-            <button class="toggle-btn active" data-range="24h">Last 24h</button>
-            <button class="toggle-btn" data-range="7d">Last 7d</button>
-            <button class="toggle-btn" data-range="30d">Last 30d</button>
-        </div>
-
+        
         <div class="header" id="header">
             <div class="stat-card">
                 <div class="stat-value" id="total">-</div>
@@ -426,11 +288,6 @@ DASHBOARD_HTML = '''
                 <div class="stat-value" id="hour-delta">-</div>
                 <div class="stat-label">Change (1h)</div>
                 <div class="last-update">Refreshing in <span id="refresh-timer">5m</span></div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="growth-rate">-</div>
-                <div class="stat-label">Daily Growth Rate</div>
-                <div class="stat-delta">→ <span id="projected-30d">-</span> in 30d</div>
             </div>
         </div>
         
@@ -468,23 +325,6 @@ DASHBOARD_HTML = '''
                 <canvas id="countryChart" style="max-height: 300px;"></canvas>
             </div>
         </div>
-
-        <div class="table-card">
-            <h3>Compare Countries</h3>
-            <div class="comparison-container">
-                <div class="comparison-input">
-                    <label style="font-size: 12px; color: #9ca3af; margin-bottom: 8px; display: block;">Country 1</label>
-                    <input type="text" id="compare-code1" placeholder="e.g., us" maxlength="2" style="max-width: 100px;">
-                </div>
-                <div class="comparison-input">
-                    <label style="font-size: 12px; color: #9ca3af; margin-bottom: 8px; display: block;">Country 2</label>
-                    <input type="text" id="compare-code2" placeholder="e.g., de" maxlength="2" style="max-width: 100px;">
-                </div>
-            </div>
-            <div style="position: relative; height: 300px;">
-                <canvas id="comparisonChart"></canvas>
-            </div>
-        </div>
     </div>
     
     <script>
@@ -495,27 +335,7 @@ DASHBOARD_HTML = '''
             const summary = await fetch('/api/summary').then(r => r.json());
             const networkTotal = await fetch('/api/network_total').then(r => r.json());
             const moversDetail = await fetch('/api/movers-detailed').then(r => r.json());
-            const anomalies = await fetch('/api/anomalies').then(r => r.json()).catch(() => ({ anomalies: [] }));
-            const growth = await fetch('/api/growth-projection').then(r => r.json()).catch(() => ({}));
-
-            // Handle anomalies
-            const anomalyBanner = document.getElementById('anomaly-alert');
-            if (anomalies.anomalies && anomalies.anomalies.length > 0) {
-                const top = anomalies.anomalies[0];
-                document.getElementById('anomaly-text').textContent = `${top.country_name} lost ${Math.abs(top.pct_change).toFixed(1)}% providers in 1h`;
-                anomalyBanner.classList.add('show');
-            } else {
-                anomalyBanner.classList.remove('show');
-            }
-
-            // Update growth projection
-            if (growth.growth_rate !== undefined) {
-                const rate = growth.growth_rate;
-                document.getElementById('growth-rate').textContent = rate >= 0 ? `+${rate.toFixed(1)}%` : `${rate.toFixed(1)}%`;
-                document.getElementById('growth-rate').style.color = rate >= 0 ? '#4ade80' : '#f87171';
-                document.getElementById('projected-30d').textContent = (growth.projected_30d || 0).toLocaleString();
-            }
-
+            
             // Update stats
             document.getElementById('total').textContent = summary.total.toLocaleString();
             document.getElementById('top-country').textContent = summary.top_10[0]?.provider_count.toLocaleString() || '-';
@@ -620,60 +440,6 @@ DASHBOARD_HTML = '''
                     }
                 });
             }
-        });
-
-        let comparisonChart;
-        document.getElementById('compare-code1').addEventListener('change', updateComparison);
-        document.getElementById('compare-code2').addEventListener('change', updateComparison);
-
-        async function updateComparison() {
-            const code1 = document.getElementById('compare-code1').value.toLowerCase();
-            const code2 = document.getElementById('compare-code2').value.toLowerCase();
-            if (!code1 || !code2) return;
-
-            const data = await fetch(`/api/comparison/${code1}/${code2}`).then(r => r.json()).catch(() => ({ data1: [], data2: [] }));
-            if (!data.data1.length || !data.data2.length) return;
-
-            if (comparisonChart) comparisonChart.destroy();
-            const ts = [...new Set([...data.data1, ...data.data2].map(d => d.timestamp))].sort();
-            comparisonChart = new Chart(document.getElementById('comparisonChart'), {
-                type: 'line',
-                data: {
-                    labels: ts.map(t => new Date(t).toLocaleDateString()),
-                    datasets: [{
-                        label: code1.toUpperCase(),
-                        data: ts.map(t => {
-                            const d = data.data1.find(x => x.timestamp === t);
-                            return d ? d.count : null;
-                        }),
-                        borderColor: '#60a5fa',
-                        fill: false,
-                        tension: 0.3
-                    }, {
-                        label: code2.toUpperCase(),
-                        data: ts.map(t => {
-                            const d = data.data2.find(x => x.timestamp === t);
-                            return d ? d.count : null;
-                        }),
-                        borderColor: '#f59e0b',
-                        fill: false,
-                        tension: 0.3
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { labels: { color: '#9ca3af' } } },
-                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af' }, grid: { display: false } } }
-                }
-            });
-        }
-
-        document.querySelectorAll('.toggle-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-            });
         });
         
         function startRefreshTimer() {
