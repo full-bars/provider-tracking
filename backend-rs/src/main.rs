@@ -21,12 +21,17 @@ pub struct AppState {
 async fn main() -> Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    let database_url = format!(
-        "sqlite://{}",
-        std::path::PathBuf::from(std::env::var("HOME").unwrap())
-            .join("provider_tracking/providers.db")
-            .display()
-    );
+    let database_url = match std::env::var("DATABASE_URL") {
+        Ok(url) => url,
+        Err(_) => {
+            format!(
+                "sqlite://{}",
+                std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string()))
+                    .join("provider_tracking/providers.db")
+                    .display()
+            )
+        }
+    };
 
     log::info!("Connecting to database: {}", database_url);
 
@@ -57,8 +62,9 @@ async fn main() -> Result<()> {
                             .route("/anomalies", web::get().to(api_anomalies))
                             .route("/movers", web::get().to(api_movers))
                             .route("/movers-detailed", web::get().to(api_movers_detailed))
-                            .route("/country-stats", web::get().to(api_country_stats))
-                            .route("/country", web::get().to(api_country))
+                            .route("/growth-projection", web::get().to(api_growth_projection))
+                            .route("/country-stats/{code}", web::get().to(api_country_stats))
+                            .route("/country/{code}", web::get().to(api_country))
                     )
             )
     })
@@ -70,7 +76,7 @@ async fn main() -> Result<()> {
 }
 
 async fn dashboard() -> HttpResponse {
-    let html = include_str!("../../dashboard/app.py");
+    let html = include_str!("../index.html");
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(html)

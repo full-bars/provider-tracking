@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Provider Tracking Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1419; color: #e0e6ed; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 28px; margin-bottom: 30px; }
+        .header { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; }
+        .stat-value { font-size: 32px; font-weight: bold; color: #4ade80; }
+        .stat-label { font-size: 12px; text-transform: uppercase; color: #9ca3af; margin-top: 5px; }
+        .stat-delta { font-size: 14px; margin-top: 8px; color: #60a5fa; }
+        .delta-positive { color: #4ade80; }
+        .delta-negative { color: #f87171; }
+        .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .chart-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; }
+        .chart-card h3 { margin-bottom: 15px; color: #a0aec0; font-size: 14px; text-transform: uppercase; }
+        .chart-container { position: relative; height: 300px; }
+        .table-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .table-card h3 { margin-bottom: 15px; color: #a0aec0; font-size: 14px; text-transform: uppercase; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 10px; border-bottom: 1px solid #2d3748; color: #a0aec0; font-size: 12px; }
+        td { padding: 10px; border-bottom: 1px solid #2d3748; }
+        .search-box { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        input { background: #0f1419; border: 1px solid #2d3748; color: #e0e6ed; padding: 10px; border-radius: 4px; }
+        .spinner { display: inline-block; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .last-update { color: #9ca3af; font-size: 12px; margin-top: 10px; }
+        .alert-banner { background: #7f1d1d; border: 1px solid #991b1b; color: #fecaca; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; width: fit-content; }
+        .alert-banner.show { display: block; }
+        .alert-banner strong { color: #fee2e2; }
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
+        .toggle-btn { background: #2d3748; border: 1px solid #4a5568; color: #e0e6ed; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .toggle-btn.active { background: #4ade80; color: #0f1419; }
+        .comparison-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .comparison-input { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; }
+        .comparison-input input { width: 100%; }
+        .indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+        .indicator.stable { background: #4ade80; }
+        .indicator.warning { background: #facc15; }
+        .indicator.unstable { background: #f87171; }
+        .volatility { font-size: 10px; color: #9ca3af; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Provider Network Dashboard</h1>
+
+        <div class="alert-banner" id="anomaly-alert">
+            <strong>⚠️ Anomalies:</strong> <span id="anomaly-text" style="margin-left: 8px;"></span>
+        </div>
+
+
+        <div class="header" id="header">
+            <div class="stat-card">
+                <div class="stat-value" id="total">-</div>
+                <div class="stat-label">Total Network Providers</div>
+                <div class="stat-delta"><span id="day-delta">-</span> (24h)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="top-country">-</div>
+                <div class="stat-label">Largest Country</div>
+                <div class="stat-delta" id="top-country-code">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="hour-delta">-</div>
+                <div class="stat-label">Change (1h)</div>
+                <div class="last-update">Refreshing in <span id="refresh-timer">5m</span></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="growth-rate">-</div>
+                <div class="stat-label">Daily Growth Rate</div>
+                <div class="stat-delta">→ <span id="projected-30d">-</span> in 30d</div>
+            </div>
+        </div>
+
+        <div class="charts">
+            <div class="chart-card">
+                <h3>Network Total Over Time</h3>
+                <div class="chart-container"><canvas id="totalChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3>Top 10 Countries</h3>
+                <div class="chart-container" style="height: 300px;"><canvas id="top25Chart"></canvas></div>
+            </div>
+        </div>
+
+        <div class="charts">
+            <div class="chart-card">
+                <h3>Provider Distribution</h3>
+                <div class="chart-container"><canvas id="distChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3>Regional Totals</h3>
+                <div class="chart-container"><canvas id="regionChart"></canvas></div>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <h3>Top 50 Gainers (24h)</h3>
+            <table id="gainers-table" style="font-size: 12px;">
+                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th>24h Δ</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="table-card">
+            <h3>Top 50 Losers (24h)</h3>
+            <table id="losers-table" style="font-size: 12px;">
+                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th>24h Δ</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="table-card">
+            <h3>⚠️ At Risk</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 12px;">
+                <div>
+                    <h4 style="color: #9ca3af; margin-bottom: 10px; font-size: 11px; text-transform: uppercase;">Disappeared (0 providers)</h4>
+                    <div id="disappeared-list"></div>
+                </div>
+                <div>
+                    <h4 style="color: #9ca3af; margin-bottom: 10px; font-size: 11px; text-transform: uppercase;">Near Zero (1-5, declining)</h4>
+                    <div id="near-zero-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="search-box">
+            <h3 style="margin-bottom: 10px;">Search Country</h3>
+            <input type="text" id="country-search" placeholder="Enter country code (e.g., us, gb, de)...">
+            <div style="margin-top: 15px;">
+                <canvas id="countryChart" style="max-height: 300px;"></canvas>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <h3>Compare Countries <button id="add-comparison-btn" style="float: right; background: #4ade80; color: #0f1419; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">+ Add Country</button></h3>
+            <div id="comparison-inputs" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;"></div>
+            <div style="position: relative; height: 300px;">
+                <canvas id="comparisonChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let totalChart, top25Chart, distChart, regionChart, countryChart;
+        let refreshInterval;
+
+        async function loadData() {
+            const summary = await fetch('/api/summary').then(r => r.json());
+            const networkTotal = await fetch('/api/network_total').then(r => r.json());
+            const moversDetail = await fetch('/api/movers-detailed').then(r => r.json());
+            const anomalies = await fetch('/api/anomalies?threshold=15').then(r => r.json()).catch(() => ({ anomalies: [] }));
+            const growth = await fetch('/api/growth-projection').then(r => r.json()).catch(() => ({}));
+            const regions = await fetch('/api/regions').then(r => r.json()).catch(() => ([]));
+            const atRisk = await fetch('/api/at-risk').then(r => r.json()).catch(() => ({ disappeared: [], near_zero: [] }));
+
+            // Handle anomalies - show all with delta and percentage
+            const anomalyBanner = document.getElementById('anomaly-alert');
+            if (anomalies.anomalies && anomalies.anomalies.length > 0) {
+                const anomalyText = anomalies.anomalies.map(a => {
+                    const sign = a.delta >= 0 ? '+' : '';
+                    return `${a.country_name} ${sign}${a.delta} (${a.pct_change >= 0 ? '+' : ''}${a.pct_change.toFixed(1)}%)`;
+                }).join('  •  ');
+                document.getElementById('anomaly-text').textContent = anomalyText;
+                anomalyBanner.classList.add('show');
+            } else {
+                anomalyBanner.classList.remove('show');
+            }
+
+            // Update growth projection
+            if (growth.growth_rate !== undefined) {
+                const rate = growth.growth_rate;
+                document.getElementById('growth-rate').textContent = rate >= 0 ? `+${rate.toFixed(1)}%` : `${rate.toFixed(1)}%`;
+                document.getElementById('growth-rate').style.color = rate >= 0 ? '#4ade80' : '#f87171';
+                document.getElementById('projected-30d').textContent = (growth.projected_30d || 0).toLocaleString();
+            }
+
+            // Update stats
+            document.getElementById('total').textContent = summary.total.toLocaleString();
+            document.getElementById('top-country').textContent = summary.top_10[0]?.provider_count.toLocaleString() || '-';
+            document.getElementById('top-country-code').textContent = summary.top_10[0]?.country_name || '-';
+
+            const dayDelta = summary.day_delta;
+            document.getElementById('day-delta').textContent = (dayDelta >= 0 ? '+' : '') + dayDelta.toLocaleString();
+            document.getElementById('day-delta').className = dayDelta >= 0 ? 'delta-positive' : 'delta-negative';
+
+            const hourDelta = summary.hour_delta;
+            document.getElementById('hour-delta').textContent = (hourDelta >= 0 ? '+' : '') + hourDelta.toLocaleString();
+            document.getElementById('hour-delta').className = hourDelta >= 0 ? 'delta-positive' : 'delta-negative';
+
+            // Network total chart with MA
+            if (totalChart) totalChart.destroy();
+            totalChart = new Chart(document.getElementById('totalChart'), {
+                type: 'line',
+                data: {
+                    labels: networkTotal.map(d => new Date(d.timestamp).toLocaleDateString()),
+                    datasets: [{
+                        label: 'Total Providers',
+                        data: networkTotal.map(d => d.total),
+                        borderColor: '#4ade80',
+                        backgroundColor: 'rgba(74, 222, 128, 0.05)',
+                        tension: 0.3,
+                        fill: true
+                    }, {
+                        label: '24h MA',
+                        data: networkTotal.map(d => d.ma),
+                        borderColor: '#9ca3af',
+                        borderDash: [5, 5],
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, labels: { color: '#9ca3af' } }, filler: { propagate: true } },
+                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af' }, grid: { display: false } } }
+                }
+            });
+
+            // Top 10 bar chart
+            if (top25Chart) top25Chart.destroy();
+            top25Chart = new Chart(document.getElementById('top25Chart'), {
+                type: 'bar',
+                data: {
+                    labels: summary.top_10.map(c => c.country_code.toUpperCase()),
+                    datasets: [{
+                        label: 'Providers',
+                        data: summary.top_10.map(c => c.provider_count),
+                        backgroundColor: '#4ade80'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { display: false } }, x: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } } }
+                }
+            });
+
+            // Distribution donut chart (top 10)
+            if (distChart) distChart.destroy();
+            const colors = ['#60a5fa', '#f59e0b', '#4ade80', '#f87171', '#a78bfa', '#14b8a6', '#fb923c', '#f97316', '#06b6d4', '#8b5cf6'];
+            distChart = new Chart(document.getElementById('distChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: summary.top_10.map(c => c.country_code.toUpperCase()),
+                    datasets: [{
+                        data: summary.top_10.map(c => c.provider_count),
+                        backgroundColor: colors
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#9ca3af' } } }
+                }
+            });
+
+            // Regional chart
+            if (regionChart) regionChart.destroy();
+            const regionColors = regions.map(r => r.delta_24h >= 0 ? '#4ade80' : '#f87171');
+            regionChart = new Chart(document.getElementById('regionChart'), {
+                type: 'bar',
+                data: {
+                    labels: regions.map(r => r.region),
+                    datasets: [{
+                        label: 'Providers',
+                        data: regions.map(r => r.total),
+                        backgroundColor: regionColors
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { display: false } }, x: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } } }
+                }
+            });
+
+            // Populate at-risk lists
+            document.getElementById('disappeared-list').innerHTML = atRisk.disappeared.length === 0 ? '<span style="color: #9ca3af;">None</span>' : atRisk.disappeared.map(c => `<div>${c.country_name} (had ${c.prev_count})</div>`).join('');
+            document.getElementById('near-zero-list').innerHTML = atRisk.near_zero.length === 0 ? '<span style="color: #9ca3af;">None</span>' : atRisk.near_zero.map(c => `<div>${c.country_name}: ${c.provider_count} (${c.delta_24h >= 0 ? '+' : ''}${c.delta_24h})</div>`).join('');
+
+            // Gainers and losers tables
+            updateDetailedMoversTable('gainers-table', moversDetail.gainers);
+            updateDetailedMoversTable('losers-table', moversDetail.losers);
+        }
+
+        async function updateDetailedMoversTable(tableId, data) {
+            const windows = ['15m', '1h', '2h', '3h', '6h', '12h', '24h', '2d', '3d', '4d', '5d', '6d', '7d'];
+            const tbody = document.querySelector(`#${tableId} tbody`);
+
+            tbody.innerHTML = await Promise.all(data.map(async (row) => {
+                const deltaColumns = windows.map(w => {
+                    const delta = row.deltas[w] || 0;
+                    const color = delta >= 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#9ca3af';
+                    return `<td style="color: ${color}">${(delta >= 0 ? '+' : '') + delta.toLocaleString()}</td>`;
+                }).join('');
+
+                let stats = '';
+                try {
+                    const resp = await fetch(`/api/country-stats/${row.code.toLowerCase()}`);
+                    const s = await resp.json();
+                    const vol_color = s.volatility === 'high' ? '#f87171' : s.volatility === 'medium' ? '#facc15' : '#4ade80';
+                    stats = `<span class="volatility" style="color: ${vol_color};" title="Churn: ${s.churn_rate}/h">${s.volatility}</span>`;
+                } catch(e) {}
+
+                return `
+                    <tr>
+                        <td>${row.name} ${stats}</td>
+                        <td>${row.current.toLocaleString()}</td>
+                        ${deltaColumns}
+                    </tr>
+                `;
+            })).then(rows => rows.join(''));
+        }
+
+        document.getElementById('country-search').addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter') {
+                const code = e.target.value.toLowerCase();
+                const data = await fetch(`/api/country/${code}`).then(r => r.json());
+                if (countryChart) countryChart.destroy();
+                countryChart = new Chart(document.getElementById('countryChart'), {
+                    type: 'line',
+                    data: {
+                        labels: data.map(d => new Date(d.timestamp).toLocaleString()),
+                        datasets: [{
+                            label: code.toUpperCase(),
+                            data: data.map(d => d.count),
+                            borderColor: '#60a5fa',
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { labels: { color: '#9ca3af' } } },
+                        scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af' }, grid: { display: false } } }
+                    }
+                });
+            }
+        });
+
+        let comparisonChart;
+        let comparisonCountries = ['us', 'de'];
+        const colors = ['#60a5fa', '#f59e0b', '#4ade80', '#f87171', '#a78bfa', '#14b8a6'];
+
+        document.getElementById('add-comparison-btn').addEventListener('click', () => {
+            const input = document.createElement('div');
+            input.style.cssText = 'background: #1a1f26; border: 1px solid #2d3748; padding: 10px; border-radius: 4px; display: flex; gap: 5px; align-items: center;';
+            const idx = comparisonCountries.length;
+            input.innerHTML = `
+                <input type="text" class="comp-input" data-idx="${idx}" placeholder="e.g., us" maxlength="2" style="max-width: 60px;">
+                <button class="remove-comp" style="background: #f87171; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 10px;">Remove</button>
+            `;
+            document.getElementById('comparison-inputs').appendChild(input);
+            input.querySelector('.comp-input').addEventListener('change', updateComparison);
+            input.querySelector('.remove-comp').addEventListener('click', () => {
+                comparisonCountries.splice(idx, 1);
+                input.remove();
+                updateComparison();
+            });
+        });
+
+        function renderComparisonInputs() {
+            const container = document.getElementById('comparison-inputs');
+            container.innerHTML = comparisonCountries.map((code, idx) => `
+                <div style="background: #1a1f26; border: 1px solid #2d3748; padding: 10px; border-radius: 4px; display: flex; gap: 5px; align-items: center;">
+                    <input type="text" class="comp-input" data-idx="${idx}" value="${code}" maxlength="2" style="max-width: 60px;">
+                    <button class="remove-comp" data-idx="${idx}" style="background: #f87171; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 10px;">Remove</button>
+                </div>
+            `).join('');
+
+            container.querySelectorAll('.comp-input').forEach(inp => {
+                inp.addEventListener('change', (e) => {
+                    comparisonCountries[parseInt(e.target.dataset.idx)] = e.target.value.toLowerCase();
+                    updateComparison();
+                });
+            });
+            container.querySelectorAll('.remove-comp').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    comparisonCountries.splice(parseInt(e.target.dataset.idx), 1);
+                    renderComparisonInputs();
+                    updateComparison();
+                });
+            });
+        }
+
+        async function updateComparison() {
+            const validCodes = comparisonCountries.filter(c => c.length === 2);
+            if (validCodes.length < 2) return;
+
+            const allData = {};
+            for (let code of validCodes) {
+                const resp = await fetch(`/api/country/${code}`).catch(() => null);
+                if (resp) allData[code] = await resp.json();
+            }
+
+            if (!Object.keys(allData).length) return;
+
+            const allTs = [...new Set(Object.values(allData).flat().map(d => d.timestamp))].sort();
+            if (comparisonChart) comparisonChart.destroy();
+
+            const datasets = validCodes.map((code, idx) => ({
+                label: code.toUpperCase(),
+                data: allTs.map(t => {
+                    const entry = (allData[code] || []).find(x => x.timestamp === t);
+                    return entry ? entry.count : null;
+                }),
+                borderColor: colors[idx % colors.length],
+                fill: false,
+                tension: 0.3
+            }));
+
+            comparisonChart = new Chart(document.getElementById('comparisonChart'), {
+                type: 'line',
+                data: {
+                    labels: allTs.map(t => new Date(t).toLocaleDateString()),
+                    datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#9ca3af' } } },
+                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af' }, grid: { display: false } } }
+                }
+            });
+        }
+
+        renderComparisonInputs();
+
+        function startRefreshTimer() {
+            let seconds = 300;
+            refreshInterval = setInterval(() => {
+                seconds--;
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                document.getElementById('refresh-timer').textContent = `${mins}m ${secs}s`;
+                if (seconds <= 0) {
+                    loadData();
+                    seconds = 300;
+                }
+            }, 1000);
+        }
+
+        loadData();
+        startRefreshTimer();
+    </script>
+</body>
+</html>
