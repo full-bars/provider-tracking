@@ -17,11 +17,11 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
-    let hour_ago = format_time_offset(&latest, -1);
+    let hour_ago = format_time_offset(&latest, -60);
     let hour_ago_total = db::get_total_at_timestamp(pool, &hour_ago).await.unwrap_or(current_total);
     let hour_delta = current_total - hour_ago_total;
 
-    let day_ago = format_time_offset(&latest, -24);
+    let day_ago = format_time_offset(&latest, -1440);
     let day_ago_total = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(current_total);
     let day_delta = current_total - day_ago_total;
 
@@ -56,7 +56,7 @@ pub async fn api_regions(state: web::Data<AppState>) -> HttpResponse {
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
-    let day_ago = format_time_offset(&latest, -24);
+    let day_ago = format_time_offset(&latest, -1440);
     let current_countries = match db::get_countries_at_timestamp(pool, &latest).await {
         Ok(countries) => countries,
         Err(_) => return HttpResponse::InternalServerError().finish(),
@@ -94,7 +94,7 @@ pub async fn api_at_risk(state: web::Data<AppState>) -> HttpResponse {
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
-    let day_ago = format_time_offset(&latest, -24);
+    let day_ago = format_time_offset(&latest, -1440);
     let current_countries = match db::get_countries_at_timestamp(pool, &latest).await {
         Ok(countries) => countries,
         Err(_) => return HttpResponse::InternalServerError().finish(),
@@ -146,7 +146,7 @@ pub async fn api_anomalies(state: web::Data<AppState>, query: web::Query<HashMap
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
-    let hour_ago = format_time_offset(&latest, -1);
+    let hour_ago = format_time_offset(&latest, -60);
 
     match db::get_anomalies(pool, &latest, &hour_ago, threshold).await {
         Ok((gains, losses)) => {
@@ -349,7 +349,7 @@ pub async fn api_growth_projection(state: web::Data<AppState>) -> HttpResponse {
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
-    let day_ago = format_time_offset(&latest, -24);
+    let day_ago = format_time_offset(&latest, -1440);
     let past = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(current);
 
     let daily_growth = current - past;

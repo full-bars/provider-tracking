@@ -993,7 +993,12 @@ DASHBOARD_HTML = '''
             comparisonChart = new Chart(document.getElementById('comparisonChart'), {
                 type: 'line',
                 data: {
-                    labels: allTs.map(t => new Date(t).toLocaleDateString()),
+                    labels: allTs.map(t => {
+                        const d = new Date(t);
+                        const date = d.toLocaleDateString();
+                        const time = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+                        return `${date} ${time}`;
+                    }),
                     datasets
                 },
                 options: {
