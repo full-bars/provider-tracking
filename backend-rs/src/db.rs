@@ -126,6 +126,21 @@ pub async fn get_movers(
     Ok((gainers.into_iter().take(10).collect(), losers.into_iter().take(10).collect()))
 }
 
+pub async fn get_country_history(pool: &SqlitePool, country_code: &str, limit: i64) -> Result<Vec<ProviderCount>> {
+    let rows = sqlx::query_as::<_, ProviderCount>(
+        "SELECT timestamp, country_code, country_name, provider_count FROM provider_counts
+         WHERE country_code = ? ORDER BY timestamp DESC LIMIT ?"
+    )
+    .bind(country_code)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let mut result = rows;
+    result.reverse();
+    Ok(result)
+}
+
 pub async fn get_anomalies(
     pool: &SqlitePool,
     current_timestamp: &str,
