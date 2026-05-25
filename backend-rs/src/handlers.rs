@@ -228,13 +228,10 @@ pub async fn api_movers_detailed(state: web::Data<AppState>) -> HttpResponse {
 
         for (window_name, minutes) in windows.iter() {
             let past_time = format_time_offset(&latest, -(*minutes as i32));
-            let past_count = db::get_country_at_time(pool, &cc.country_code, &past_time)
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or(0);
-
-            let delta = cc.provider_count - past_count;
+            let delta = match db::get_country_at_time(pool, &cc.country_code, &past_time).await {
+                Ok(Some(past_count)) => cc.provider_count - past_count,
+                _ => 0,
+            };
             deltas.insert(window_name.to_string(), delta);
         }
 

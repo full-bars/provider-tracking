@@ -70,18 +70,20 @@ def api_summary():
     hour_ago = (datetime.fromisoformat(latest) - timedelta(hours=1)).isoformat(sep=' ')
     cursor.execute("""
         SELECT SUM(provider_count) as total FROM provider_counts 
-        WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1
+        WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)
     """, (hour_ago,))
-    hour_ago_total = cursor.fetchone()['total'] or current_total
+    row = cursor.fetchone()
+    hour_ago_total = row['total'] if row and row['total'] is not None else current_total
     hour_delta = current_total - hour_ago_total
     
     # Day-over-day delta
     day_ago = (datetime.fromisoformat(latest) - timedelta(days=1)).isoformat(sep=' ')
     cursor.execute("""
         SELECT SUM(provider_count) as total FROM provider_counts 
-        WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1
+        WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)
     """, (day_ago,))
-    day_ago_total = cursor.fetchone()['total'] or current_total
+    row = cursor.fetchone()
+    day_ago_total = row['total'] if row and row['total'] is not None else current_total
     day_delta = current_total - day_ago_total
     
     # Top 10
@@ -447,7 +449,9 @@ def api_movers_detailed():
         '4d': 5760,
         '5d': 7200,
         '6d': 8640,
-        '7d': 10080
+        '7d': 10080,
+        '14d': 20160,
+        '30d': 43200
     }
 
     latest_dt = datetime.fromisoformat(latest)
@@ -625,7 +629,7 @@ DASHBOARD_HTML = '''
         <div class="table-card">
             <h3>Top 50 Gainers (24h)</h3>
             <table id="gainers-table" style="font-size: 12px;">
-                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th style="font-weight:bold;text-decoration:underline">24h Δ</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th></tr></thead>
+                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th style="background:rgba(74,222,128,0.15);border-bottom:2px solid #4ade80;">24h Δ ▼</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th><th>14d Δ</th><th>30d Δ</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -633,7 +637,7 @@ DASHBOARD_HTML = '''
         <div class="table-card">
             <h3>Top 50 Losers (24h)</h3>
             <table id="losers-table" style="font-size: 12px;">
-                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th style="font-weight:bold;text-decoration:underline">24h Δ</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th></tr></thead>
+                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th style="background:rgba(74,222,128,0.15);border-bottom:2px solid #4ade80;">24h Δ ▼</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th><th>14d Δ</th><th>30d Δ</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -796,7 +800,18 @@ DASHBOARD_HTML = '''
                     indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(ctx) {
+                                    const r = regions[ctx.dataIndex];
+                                    const sign = r.delta_24h >= 0 ? '+' : '';
+                                    return `24h: ${sign}${r.delta_24h.toLocaleString()}`;
+                                }
+                            }
+                        }
+                    },
                     scales: { y: { ticks: { color: '#9ca3af' }, grid: { display: false } }, x: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } } }
                 }
             });
@@ -830,14 +845,26 @@ DASHBOARD_HTML = '''
                     datasets: [{
                         label: 'Providers',
                         data: regions.map(r => r.total),
-                        backgroundColor: regionColors
+                        backgroundColor: regionColors,
+                        minBarThickness: 8
                     }]
                 },
                 options: {
                     indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(ctx) {
+                                    const r = regions[ctx.dataIndex];
+                                    const sign = r.delta_24h >= 0 ? '+' : '';
+                                    return `24h: ${sign}${r.delta_24h.toLocaleString()}`;
+                                }
+                            }
+                        }
+                    },
                     scales: { y: { ticks: { color: '#9ca3af' }, grid: { display: false } }, x: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } } }
                 }
             });
@@ -862,14 +889,14 @@ DASHBOARD_HTML = '''
         }
         
         async function updateDetailedMoversTable(tableId, data) {
-            const windows = ['15m', '1h', '2h', '3h', '6h', '12h', '24h', '2d', '3d', '4d', '5d', '6d', '7d'];
+            const windows = ['15m', '1h', '2h', '3h', '6h', '12h', '24h', '2d', '3d', '4d', '5d', '6d', '7d', '14d', '30d'];
             const tbody = document.querySelector(`#${tableId} tbody`);
 
             tbody.innerHTML = await Promise.all(data.map(async (row) => {
                 const deltaColumns = windows.map(w => {
                     const delta = row.deltas[w] || 0;
                     const color = delta >= 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#9ca3af';
-                    return `<td style="color: ${color}; ${w === '24h' ? 'font-weight:bold' : ''}">${(delta >= 0 ? '+' : '') + delta.toLocaleString()}</td>`;
+                    return `<td style="color: ${color}; ${w === '24h' ? 'font-weight:bold;background:rgba(74,222,128,0.08)' : ''}">${(delta >= 0 ? '+' : '') + delta.toLocaleString()}</td>`;
                 }).join('');
 
                 let stats = '';

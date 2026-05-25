@@ -102,7 +102,7 @@
         <div class="table-card">
             <h3>Top 50 Gainers (24h)</h3>
             <table id="gainers-table" style="font-size: 12px;">
-                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th>24h Δ</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th></tr></thead>
+                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th style="background:rgba(74,222,128,0.15);border-bottom:2px solid #4ade80;">24h Δ ▼</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th><th>14d Δ</th><th>30d Δ</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -110,7 +110,7 @@
         <div class="table-card">
             <h3>Top 50 Losers (24h)</h3>
             <table id="losers-table" style="font-size: 12px;">
-                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th>24h Δ</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th></tr></thead>
+                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th style="background:rgba(74,222,128,0.15);border-bottom:2px solid #4ade80;">24h Δ ▼</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th><th>14d Δ</th><th>30d Δ</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -228,15 +228,17 @@
 
             // Network total chart with MA
             if (totalChart) totalChart.destroy();
+            const totalLabels = networkTotal.map(d => {
+                const dt = new Date(d.timestamp);
+                return {
+                    short: dt.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}),
+                    full: `${dt.toLocaleDateString()} ${dt.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`
+                };
+            });
             totalChart = new Chart(document.getElementById('totalChart'), {
                 type: 'line',
                 data: {
-                    labels: networkTotal.map(d => {
-                        const dt = new Date(d.timestamp);
-                        const date = dt.toLocaleDateString();
-                        const time = dt.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-                        return `${date} ${time}`;
-                    }),
+                    labels: totalLabels.map(l => l.short),
                     datasets: [{
                         label: 'Total Providers',
                         data: networkTotal.map(d => d.total),
@@ -257,7 +259,15 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: true, labels: { color: '#9ca3af' } }, filler: { propagate: true } },
+                    plugins: {
+                        legend: { display: true, labels: { color: '#9ca3af' } },
+                        filler: { propagate: true },
+                        tooltip: {
+                            callbacks: {
+                                title: ctx => totalLabels[ctx[0].dataIndex].full
+                            }
+                        }
+                    },
                     scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af' }, grid: { display: false } } }
                 }
             });
@@ -312,14 +322,26 @@
                     datasets: [{
                         label: 'Providers',
                         data: regions.map(r => r.total),
-                        backgroundColor: regionColors
+                        backgroundColor: regionColors,
+                        minBarThickness: 8
                     }]
                 },
                 options: {
                     indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(ctx) {
+                                    const r = regions[ctx.dataIndex];
+                                    const sign = r.delta_24h >= 0 ? '+' : '';
+                                    return `24h: ${sign}${r.delta_24h.toLocaleString()}`;
+                                }
+                            }
+                        }
+                    },
                     scales: { y: { ticks: { color: '#9ca3af' }, grid: { display: false } }, x: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } } }
                 }
             });
@@ -344,14 +366,14 @@
         }
 
         async function updateDetailedMoversTable(tableId, data) {
-            const windows = ['15m', '1h', '2h', '3h', '6h', '12h', '24h', '2d', '3d', '4d', '5d', '6d', '7d'];
+            const windows = ['15m', '1h', '2h', '3h', '6h', '12h', '24h', '2d', '3d', '4d', '5d', '6d', '7d', '14d', '30d'];
             const tbody = document.querySelector(`#${tableId} tbody`);
 
             tbody.innerHTML = await Promise.all(data.map(async (row) => {
                 const deltaColumns = windows.map(w => {
                     const delta = row.deltas[w] || 0;
                     const color = delta >= 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#9ca3af';
-                    return `<td style="color: ${color}">${(delta >= 0 ? '+' : '') + delta.toLocaleString()}</td>`;
+                    return `<td style="color: ${color}; ${w === '24h' ? 'font-weight:bold;background:rgba(74,222,128,0.08)' : ''}">${(delta >= 0 ? '+' : '') + delta.toLocaleString()}</td>`;
                 }).join('');
 
                 let stats = '';
