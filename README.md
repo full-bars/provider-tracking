@@ -9,7 +9,7 @@ Real-time monitoring and analytics dashboard for URnetwork provider metrics acro
 - **Regional Analysis** — 6-region aggregation (North America, Europe, Asia-Pacific, Middle East, South America, Africa) with 24-hour deltas
 - **Growth Analytics** — Daily growth rate projections with 30-day trends and volatility indicators
 - **At-Risk Tracking** — Identifies countries losing providers and near-zero capacity regions
-- **Multi-Country Comparison** — Dynamic side-by-side analysis of up to 10 providers simultaneously
+- **Multi-Country Comparison** — Dynamic side-by-side analysis of up to 10 countries simultaneously
 - **Moving Averages** — 24-hour rolling average overlaid on network total trends
 - **Historical Data** — Up to 7 days of historical snapshots for trend analysis
 
@@ -126,12 +126,12 @@ providers-rs.yoursite.com {
 Access the interactive dashboard at `http://<server>:5000` to view:
 - **Network Summary** — Total provider count, hourly/daily deltas
 - **Top 10 Countries** — Bar chart of highest-capacity regions
-- **Regional Breakdown** — Horizontal stacked bar chart with 24h change indicators
-- **Network Trend** — 7-day line chart with 24h moving average overlay
-- **Distribution** — Donut chart showing top 10 + "Others" concentration
-- **Anomalies** — Real-time alert banner for significant changes (>15% by default)
-- **Gainers/Losers** — 24h movers table with volatility scores
-- **At-Risk Countries** — Tracking disappeared and near-zero capacity providers
+- **Regional Breakdown** — Horizontal bar chart showing provider totals by region with color-coded deltas
+- **Network Trend** — 7-day line chart with 24h moving average overlay and time-stamped x-axis
+- **Distribution** — Donut chart showing top 10 countries + "Others" concentration
+- **Anomalies** — Real-time scrolling alert banner for significant changes (>15% by default)
+- **Gainers/Losers** — Top 50 movers with 15m-7d time deltas, volatility levels, and churn rates
+- **At-Risk Countries** — Tracking disappeared countries (0 providers) and near-zero capacity regions (1–5 providers, declining)
 
 ### Customization
 
@@ -140,10 +140,16 @@ Access the interactive dashboard at `http://<server>:5000` to view:
 - Value persisted to browser localStorage
 - Automatically re-fetches and updates alerts
 
-**Time Range Buttons** — View movers and trends across:
-- Last 1 hour
-- Last 24 hours
-- Last 7 days
+**Multi-Country Comparison** — Compare up to 10 countries side-by-side:
+- Add/remove countries dynamically
+- Supports country name search with common aliases (Netherlands/Holland, UK/England, South Korea/Korea, etc.)
+- Displays provider count trends with time-stamped x-axis
+- Defaults to top 5 countries on load
+
+**Movers Time Windows** — View detailed deltas across multiple time intervals:
+- 15 minutes to 7 days granularity
+- Shows volatility level (high/medium/low) with churn rate (providers/hour)
+- Top 50 gainers and losers for each metric
 
 ## API Endpoints
 
