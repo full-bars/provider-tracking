@@ -625,7 +625,7 @@ DASHBOARD_HTML = '''
         <div class="table-card">
             <h3>Top 50 Gainers (24h)</h3>
             <table id="gainers-table" style="font-size: 12px;">
-                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th>24h Δ</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th></tr></thead>
+                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th style="font-weight:bold;text-decoration:underline">24h Δ</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -633,7 +633,7 @@ DASHBOARD_HTML = '''
         <div class="table-card">
             <h3>Top 50 Losers (24h)</h3>
             <table id="losers-table" style="font-size: 12px;">
-                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th>24h Δ</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th></tr></thead>
+                <thead><tr><th>Country</th><th>Current</th><th>15m Δ</th><th>1h Δ</th><th>2h Δ</th><th>3h Δ</th><th>6h Δ</th><th>12h Δ</th><th style="font-weight:bold;text-decoration:underline">24h Δ</th><th>2d Δ</th><th>3d Δ</th><th>4d Δ</th><th>5d Δ</th><th>6d Δ</th><th>7d Δ</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -869,7 +869,7 @@ DASHBOARD_HTML = '''
                 const deltaColumns = windows.map(w => {
                     const delta = row.deltas[w] || 0;
                     const color = delta >= 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#9ca3af';
-                    return `<td style="color: ${color}">${(delta >= 0 ? '+' : '') + delta.toLocaleString()}</td>`;
+                    return `<td style="color: ${color}; ${w === '24h' ? 'font-weight:bold' : ''}">${(delta >= 0 ? '+' : '') + delta.toLocaleString()}</td>`;
                 }).join('');
 
                 let stats = '';
