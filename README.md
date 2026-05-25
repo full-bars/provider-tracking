@@ -317,4 +317,4 @@ Both backends read from the same SQLite database and can operate independently o
 
 ## License
 
-Private repository
+Open source
