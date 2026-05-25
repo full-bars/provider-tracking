@@ -652,14 +652,6 @@ DASHBOARD_HTML = '''
             </div>
         </div>
 
-        <div class="search-box">
-            <h3 style="margin-bottom: 10px;">Search Country</h3>
-            <input type="text" id="country-search" placeholder="Enter country code (e.g., us, gb, de)...">
-            <div style="margin-top: 15px;">
-                <canvas id="countryChart" style="max-height: 300px;"></canvas>
-            </div>
-        </div>
-
         <div class="table-card">
             <h3>Compare Countries</h3>
             <div style="position: relative; height: 300px; margin-bottom: 20px;">
@@ -668,6 +660,14 @@ DASHBOARD_HTML = '''
             <div style="border-top: 1px solid #2d3748; padding-top: 15px;">
                 <h4 style="margin-bottom: 10px; color: #9ca3af; font-size: 12px;">Add/Remove Countries <button id="add-comparison-btn" style="float: right; background: #4ade80; color: #0f1419; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">+ Add</button></h4>
                 <div id="comparison-inputs" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
+            </div>
+        </div>
+
+        <div class="search-box">
+            <h3 style="margin-bottom: 10px;">Search Country</h3>
+            <input type="text" id="country-search" placeholder="Enter country code (e.g., us, gb, de)...">
+            <div style="margin-top: 15px;">
+                <canvas id="countryChart" style="max-height: 300px;"></canvas>
             </div>
         </div>
     </div>
