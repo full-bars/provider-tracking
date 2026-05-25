@@ -110,7 +110,7 @@ def api_network_total():
         SELECT timestamp, SUM(provider_count) as total
         FROM provider_counts
         GROUP BY timestamp
-        ORDER BY timestamp DESC LIMIT 168
+        ORDER BY timestamp DESC LIMIT 720
     """)
     data = [{'timestamp': row[0], 'total': row[1]} for row in cursor.fetchall()]
     data.reverse()
@@ -512,7 +512,7 @@ def api_country(code):
         SELECT timestamp, provider_count 
         FROM provider_counts 
         WHERE country_code = ? 
-        ORDER BY timestamp DESC LIMIT 168
+        ORDER BY timestamp DESC LIMIT 720
     """, (code.lower(),))
     data = [{'timestamp': row[0], 'count': row[1]} for row in cursor.fetchall()]
     data.reverse()
