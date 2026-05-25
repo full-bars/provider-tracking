@@ -138,10 +138,13 @@
         </div>
 
         <div class="table-card">
-            <h3>Compare Countries <button id="add-comparison-btn" style="float: right; background: #4ade80; color: #0f1419; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">+ Add Country</button></h3>
-            <div id="comparison-inputs" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;"></div>
-            <div style="position: relative; height: 300px;">
+            <h3>Compare Countries</h3>
+            <div style="position: relative; height: 300px; margin-bottom: 20px;">
                 <canvas id="comparisonChart"></canvas>
+            </div>
+            <div style="border-top: 1px solid #2d3748; padding-top: 15px;">
+                <h4 style="margin-bottom: 10px; color: #9ca3af; font-size: 12px;">Add/Remove Countries <button id="add-comparison-btn" style="float: right; background: #4ade80; color: #0f1419; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">+ Add</button></h4>
+                <div id="comparison-inputs" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
             </div>
         </div>
     </div>
@@ -328,9 +331,9 @@
                 return `<div>${c.country_name}: ${c.provider_count} (${delta >= 0 ? '+' : ''}${delta})</div>`;
             }).join('');
 
-            // Update default comparison to show top 5 countries
-            if (moversDetail.gainers && moversDetail.gainers.length >= 5) {
-                comparisonCountries = moversDetail.gainers.slice(0, 5).map(c => c.code.toLowerCase());
+            // Update default comparison to show top 5 countries by provider count
+            if (summary.top_10 && summary.top_10.length >= 5) {
+                comparisonCountries = summary.top_10.slice(0, 5).map(c => c.country_code.toLowerCase());
                 renderComparisonInputs();
                 await updateComparison(); // Redraw the comparison chart with new countries
             }
