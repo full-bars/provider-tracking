@@ -232,8 +232,12 @@ def api_growth_projection():
     cursor.execute("SELECT SUM(provider_count) as total FROM provider_counts WHERE timestamp = ?", (latest,))
     current = cursor.fetchone()['total']
 
-    cursor.execute("SELECT SUM(provider_count) as total FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", (day_ago,))
-    past = cursor.fetchone()['total'] or current
+    cursor.execute("""
+        SELECT SUM(provider_count) as total FROM provider_counts
+        WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)
+    """, (day_ago,))
+    row = cursor.fetchone()
+    past = (row['total'] if row and row['total'] is not None else None) or current
 
     daily_growth = current - past
     growth_rate = (daily_growth / past * 100) if past > 0 else 0
@@ -758,7 +762,12 @@ DASHBOARD_HTML = '''
             totalChart = new Chart(document.getElementById('totalChart'), {
                 type: 'line',
                 data: {
-                    labels: networkTotal.map(d => new Date(d.timestamp).toLocaleDateString()),
+                    labels: networkTotal.map(d => {
+                        const dt = new Date(d.timestamp);
+                        const h = dt.getHours() % 12 || 12;
+                        const min = dt.getMinutes().toString().padStart(2, '0');
+                        return `${dt.getMonth()+1}/${dt.getDate()} ${h}:${min}`;
+                    }),
                     datasets: [{
                         label: 'Total Providers',
                         data: networkTotal.map(d => d.total),
@@ -780,7 +789,7 @@ DASHBOARD_HTML = '''
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: { legend: { display: true, labels: { color: '#9ca3af' } }, filler: { propagate: true } },
-                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af' }, grid: { display: false } } }
+                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af', maxTicksLimit: 12 }, grid: { display: false } } }
                 }
             });
 
@@ -846,7 +855,7 @@ DASHBOARD_HTML = '''
                         label: 'Providers',
                         data: regions.map(r => r.total),
                         backgroundColor: regionColors,
-                        minBarThickness: 8
+                        minBarLength: 8
                     }]
                 },
                 options: {

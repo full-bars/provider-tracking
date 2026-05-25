@@ -230,10 +230,11 @@
             if (totalChart) totalChart.destroy();
             const totalLabels = networkTotal.map(d => {
                 const dt = new Date(d.timestamp);
-                return {
-                    short: dt.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}),
-                    full: `${dt.toLocaleDateString()} ${dt.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`
-                };
+                const h = dt.getHours() % 12 || 12;
+                const min = dt.getMinutes().toString().padStart(2, '0');
+                const short = `${dt.getMonth()+1}/${dt.getDate()} ${h}:${min}`;
+                const full = `${dt.toLocaleDateString()} ${dt.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`;
+                return { short, full };
             });
             totalChart = new Chart(document.getElementById('totalChart'), {
                 type: 'line',
@@ -268,7 +269,7 @@
                             }
                         }
                     },
-                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af' }, grid: { display: false } } }
+                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af', maxTicksLimit: 12 }, grid: { display: false } } }
                 }
             });
 
@@ -323,7 +324,7 @@
                         label: 'Providers',
                         data: regions.map(r => r.total),
                         backgroundColor: regionColors,
-                        minBarThickness: 8
+                        minBarLength: 8
                     }]
                 },
                 options: {
