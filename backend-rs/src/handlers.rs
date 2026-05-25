@@ -43,7 +43,7 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
 
 pub async fn api_network_total(state: web::Data<AppState>) -> HttpResponse {
     let pool = &state.pool;
-    match db::get_network_totals(pool, 168).await {
+    match db::get_network_totals(pool, 720).await {
         Ok(data) => HttpResponse::Ok().json(data),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
@@ -325,7 +325,7 @@ pub async fn api_country(state: web::Data<AppState>, path: web::Path<String>) ->
     let pool = &state.pool;
     let code = path.into_inner();
 
-    match db::get_country_history(pool, &code, 168).await {
+    match db::get_country_history(pool, &code, 720).await {
         Ok(data) => {
             let response: Vec<_> = data
                 .iter()

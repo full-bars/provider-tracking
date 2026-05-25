@@ -11,7 +11,7 @@ Real-time monitoring and analytics dashboard for URnetwork provider metrics acro
 - **At-Risk Tracking** — Identifies countries losing providers and near-zero capacity regions
 - **Multi-Country Comparison** — Dynamic side-by-side analysis of up to 10 countries simultaneously
 - **Moving Averages** — 24-hour rolling average overlaid on network total trends
-- **Historical Data** — Up to 7 days of historical snapshots for trend analysis
+- **Historical Data** — Up to 30 days of historical snapshots for trend analysis
 
 ## Tech Stack
 
@@ -127,7 +127,7 @@ Access the interactive dashboard at `http://<server>:5000` to view:
 - **Network Summary** — Total provider count, hourly/daily deltas
 - **Top 10 Countries** — Bar chart of highest-capacity regions
 - **Regional Breakdown** — Horizontal bar chart showing provider totals by region with color-coded deltas
-- **Network Trend** — 7-day line chart with 24h moving average overlay and time-stamped x-axis
+- **Network Trend** — 30-day line chart with 24h moving average overlay and time-stamped x-axis
 - **Distribution** — Donut chart showing top 10 countries + "Others" concentration
 - **Anomalies** — Real-time scrolling alert banner for significant changes (>15% by default)
 - **Gainers/Losers** — Top 50 movers with 15m-7d time deltas, volatility levels, and churn rates
