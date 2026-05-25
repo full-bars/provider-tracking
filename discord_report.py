@@ -8,6 +8,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+if not WEBHOOK_URL:
+    print("Error: DISCORD_WEBHOOK_URL environment variable not set", file=sys.stderr)
+    sys.exit(1)
+
 DB_PATH = Path.home() / "provider_tracking" / "providers.db"
 
 def get_db():
