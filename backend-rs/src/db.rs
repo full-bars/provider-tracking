@@ -180,8 +180,8 @@ pub async fn get_anomalies(
         }
     }
 
-    gains.sort_by(|a, b| b.percent_change.partial_cmp(&a.percent_change).unwrap());
-    losses.sort_by(|a, b| a.percent_change.partial_cmp(&b.percent_change).unwrap());
+    gains.sort_by(|a, b| b.percent_change.abs().partial_cmp(&a.percent_change.abs()).unwrap());
+    losses.sort_by(|a, b| b.percent_change.abs().partial_cmp(&a.percent_change.abs()).unwrap());
 
     Ok((gains, losses))
 }

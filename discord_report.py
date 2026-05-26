@@ -37,14 +37,14 @@ def get_movers(since_timestamp, window_name):
     # Gainers
     cursor.execute(f"""
         WITH current AS (
-            SELECT country_code, country_name, provider_count 
+            SELECT country_code, country_name, provider_count
             FROM provider_counts WHERE timestamp = ?
         ),
         past AS (
-            SELECT country_code, provider_count 
-            FROM provider_counts 
+            SELECT country_code, provider_count
+            FROM provider_counts
             WHERE timestamp = (
-                SELECT MIN(timestamp) FROM provider_counts WHERE timestamp >= ?
+                SELECT MAX(timestamp) FROM provider_counts WHERE timestamp <= ?
             )
         )
         SELECT c.country_name, c.country_code, c.provider_count,
@@ -60,14 +60,14 @@ def get_movers(since_timestamp, window_name):
     # Losers
     cursor.execute(f"""
         WITH current AS (
-            SELECT country_code, country_name, provider_count 
+            SELECT country_code, country_name, provider_count
             FROM provider_counts WHERE timestamp = ?
         ),
         past AS (
-            SELECT country_code, provider_count 
-            FROM provider_counts 
+            SELECT country_code, provider_count
+            FROM provider_counts
             WHERE timestamp = (
-                SELECT MIN(timestamp) FROM provider_counts WHERE timestamp >= ?
+                SELECT MAX(timestamp) FROM provider_counts WHERE timestamp <= ?
             )
         )
         SELECT c.country_name, c.country_code, c.provider_count,
@@ -93,25 +93,25 @@ def get_anomalies(threshold=0.15):
     
     cursor.execute(f"""
         WITH current AS (
-            SELECT country_code, country_name, provider_count 
+            SELECT country_code, country_name, provider_count
             FROM provider_counts WHERE timestamp = ?
         ),
         past AS (
-            SELECT country_code, provider_count 
-            FROM provider_counts 
+            SELECT country_code, provider_count
+            FROM provider_counts
             WHERE timestamp = (
-                SELECT MIN(timestamp) FROM provider_counts WHERE timestamp >= ?
+                SELECT MAX(timestamp) FROM provider_counts WHERE timestamp <= ?
             )
         )
         SELECT c.country_name, c.country_code, c.provider_count,
                COALESCE(c.provider_count - p.provider_count, 0) as delta,
-               CASE WHEN p.provider_count > 0 
+               CASE WHEN p.provider_count > 0
                     THEN CAST(c.provider_count - p.provider_count AS FLOAT) / p.provider_count
                     ELSE 0 END as pct_change
         FROM current c
         LEFT JOIN past p ON c.country_code = p.country_code
         WHERE ABS(CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0)) > ?
-        ORDER BY pct_change DESC
+        ORDER BY ABS(pct_change) DESC
     """, (latest, hour_ago, threshold))
     anomalies = [dict(row) for row in cursor.fetchall()]
     
@@ -164,10 +164,10 @@ def report_hourly():
     }]
     
     if anomalies:
-        anomaly_text = "\n".join([f"⚠️ **{a['country_name']}** ({a['country_code'].upper()}): {a['pct_change']*100:+.1f}%" for a in anomalies[:5]])
+        anomaly_text = " • ".join([f"**{a['country_name']}** {a['delta']:+d} ({a['pct_change']*100:+.1f}%)" for a in anomalies[:5]])
         embeds[0]["fields"].append({
             "name": "🚨 Anomalies Detected (>15% change)",
-            "value": anomaly_text,
+            "value": f"⚠️ Anomalies: {anomaly_text}",
             "inline": False
         })
     
