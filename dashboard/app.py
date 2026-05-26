@@ -260,12 +260,19 @@ def api_anomalies():
         FROM current c
         LEFT JOIN past p ON c.country_code = p.country_code
         WHERE ABS(CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0)) > ?
-        ORDER BY ABS(pct_change) DESC
     """, (latest, hour_ago, threshold))
 
-    anomalies = [dict(row) for row in cursor.fetchall()]
+    all_anomalies = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return jsonify({'anomalies': anomalies, 'threshold': threshold})
+
+    gains = [a for a in all_anomalies if a['pct_change'] > 0]
+    losses = [a for a in all_anomalies if a['pct_change'] < 0]
+
+    gains.sort(key=lambda x: abs(x['pct_change']), reverse=True)
+    losses.sort(key=lambda x: abs(x['pct_change']), reverse=True)
+
+    anomalies = gains + losses
+    return jsonify({'anomalies': anomalies, 'threshold': threshold_pct})
 
 @app.route('/api/growth-projection')
 def api_growth_projection():
