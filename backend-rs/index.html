@@ -68,6 +68,7 @@
             <div class="stat-card">
                 <div class="stat-value" id="hour-delta">-</div>
                 <div class="stat-label">Change (1h)</div>
+                <div class="stat-delta" style="font-size: 0.9em;">Range: <span id="hour-range-inline">-</span></div>
                 <div class="last-update">Refreshing in <span id="refresh-timer">5m</span></div>
             </div>
             <div class="stat-card">
@@ -78,10 +79,6 @@
         </div>
 
         <div class="header" style="gap: 20px;">
-            <div class="stat-card">
-                <div class="stat-label">1h Range</div>
-                <div class="stat-value" style="font-size: 1.2em;" id="range-1h">-</div>
-            </div>
             <div class="stat-card">
                 <div class="stat-label">24h Range</div>
                 <div class="stat-value" style="font-size: 1.2em;" id="range-24h">-</div>
@@ -250,7 +247,7 @@
             document.getElementById('hour-delta').className = hourDelta >= 0 ? 'delta-positive' : 'delta-negative';
 
             const hourRange = summary.hour_range;
-            document.getElementById('range-1h').textContent = `${hourRange[0].toLocaleString()} - ${hourRange[1].toLocaleString()}`;
+            document.getElementById('hour-range-inline').textContent = `${hourRange[0].toLocaleString()} - ${hourRange[1].toLocaleString()}`;
 
             const dayRange = summary.day_range;
             document.getElementById('range-24h').textContent = `${dayRange[0].toLocaleString()} - ${dayRange[1].toLocaleString()}`;
