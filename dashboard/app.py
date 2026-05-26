@@ -55,37 +55,40 @@ def dashboard():
 def api_summary():
     conn = get_db()
     cursor = conn.cursor()
-    
+
     # Current totals
     cursor.execute("SELECT MAX(timestamp) as latest FROM provider_counts")
     latest = cursor.fetchone()['latest']
-    
+
     cursor.execute("""
-        SELECT SUM(provider_count) as total FROM provider_counts 
+        SELECT SUM(provider_count) as total FROM provider_counts
         WHERE timestamp = ?
     """, (latest,))
     current_total = cursor.fetchone()['total']
-    
+
     # Hour-over-hour delta
     hour_ago = (datetime.fromisoformat(latest) - timedelta(hours=1)).isoformat(sep=' ')
     cursor.execute("""
-        SELECT SUM(provider_count) as total FROM provider_counts 
+        SELECT SUM(provider_count) as total FROM provider_counts
         WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)
     """, (hour_ago,))
     row = cursor.fetchone()
     hour_ago_total = row['total'] if row and row['total'] is not None else current_total
     hour_delta = current_total - hour_ago_total
-    
+
     # Day-over-day delta
     day_ago = (datetime.fromisoformat(latest) - timedelta(days=1)).isoformat(sep=' ')
     cursor.execute("""
-        SELECT SUM(provider_count) as total FROM provider_counts 
+        SELECT SUM(provider_count) as total FROM provider_counts
         WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)
     """, (day_ago,))
     row = cursor.fetchone()
     day_ago_total = row['total'] if row and row['total'] is not None else current_total
     day_delta = current_total - day_ago_total
-    
+
+    # Week-over-week for range
+    week_ago = (datetime.fromisoformat(latest) - timedelta(days=7)).isoformat(sep=' ')
+
     # Top 10
     cursor.execute("""
         SELECT country_name, country_code, provider_count
@@ -94,13 +97,56 @@ def api_summary():
     """, (latest,))
     top_10 = [dict(row) for row in cursor.fetchall()]
 
+    # High/low ranges
+    cursor.execute("""
+        WITH totals AS (
+            SELECT SUM(provider_count) as total
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low FROM totals
+    """, (hour_ago, latest))
+    hour_range = cursor.fetchone()
+    hour_high = hour_range['high'] or 0
+    hour_low = hour_range['low'] or 0
+
+    cursor.execute("""
+        WITH totals AS (
+            SELECT SUM(provider_count) as total
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low FROM totals
+    """, (day_ago, latest))
+    day_range = cursor.fetchone()
+    day_high = day_range['high'] or 0
+    day_low = day_range['low'] or 0
+
+    cursor.execute("""
+        WITH totals AS (
+            SELECT SUM(provider_count) as total
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low FROM totals
+    """, (week_ago, latest))
+    week_range = cursor.fetchone()
+    week_high = week_range['high'] or 0
+    week_low = week_range['low'] or 0
+
     conn.close()
     return jsonify({
         'timestamp': latest,
         'total': current_total,
         'hour_delta': hour_delta,
         'day_delta': day_delta,
-        'top_10': top_10
+        'top_10': top_10,
+        'hour_range': [hour_low, hour_high],
+        'day_range': [day_low, day_high],
+        'week_range': [week_low, week_high]
     })
 
 @app.route('/api/network_total')
