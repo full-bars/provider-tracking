@@ -702,8 +702,11 @@ DASHBOARD_HTML = '''
             <div class="stat-card">
                 <div class="stat-value" id="hour-delta">-</div>
                 <div class="stat-label">Change (1h)</div>
-                <div class="stat-delta" style="font-size: 0.85em;">24h: <span id="day-delta-inline">-</span> | 7d: <span id="week-delta-inline">-</span></div>
-                <div class="stat-delta" style="font-size: 0.85em;">Range: <span id="hour-range-inline">-</span></div>
+                <div style="font-size: 0.85em; margin-top: 8px;">
+                    <div class="stat-delta">24h: <span id="day-delta-inline">-</span></div>
+                    <div class="stat-delta">7d: <span id="week-delta-inline">-</span></div>
+                    <div class="stat-delta">Range: <span id="hour-range-inline">-</span></div>
+                </div>
                 <div class="last-update">Refreshing in <span id="refresh-timer">5m</span></div>
             </div>
             <div class="stat-card">
@@ -865,10 +868,6 @@ DASHBOARD_HTML = '''
 
             const hourRange = summary.hour_range;
             document.getElementById('hour-range-inline').textContent = `${hourRange[0].toLocaleString()} - ${hourRange[1].toLocaleString()}`;
-            document.getElementById('range-24h').textContent = `${dayRange[0].toLocaleString()} - ${dayRange[1].toLocaleString()}`;
-
-            const weekRange = summary.week_range;
-            document.getElementById('range-7d').textContent = `${weekRange[0].toLocaleString()} - ${weekRange[1].toLocaleString()}`;
 
             const weekDelta = summary.week_delta;
             document.getElementById('week-delta-inline').textContent = (weekDelta >= 0 ? '+' : '') + weekDelta.toLocaleString();
