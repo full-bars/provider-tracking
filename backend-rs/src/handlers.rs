@@ -32,9 +32,9 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
         Err(_) => vec![],
     };
 
-    let hour_range = db::get_network_range(pool, &hour_ago, &latest).await.unwrap_or((0, 0));
-    let day_range = db::get_network_range(pool, &day_ago, &latest).await.unwrap_or((0, 0));
-    let week_range = db::get_network_range(pool, &week_ago, &latest).await.unwrap_or((0, 0));
+    let (hour_high, hour_low) = db::get_network_range(pool, &hour_ago, &latest).await.unwrap_or((0, 0));
+    let (day_high, day_low) = db::get_network_range(pool, &day_ago, &latest).await.unwrap_or((0, 0));
+    let (week_high, week_low) = db::get_network_range(pool, &week_ago, &latest).await.unwrap_or((0, 0));
 
     let response = SummaryResponse {
         timestamp: latest,
@@ -42,9 +42,9 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
         hour_delta,
         day_delta,
         top_10,
-        hour_range,
-        day_range,
-        week_range,
+        hour_range: (hour_low, hour_high),
+        day_range: (day_low, day_high),
+        week_range: (week_low, week_high),
     };
 
     HttpResponse::Ok().json(response)

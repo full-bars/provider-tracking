@@ -636,6 +636,7 @@ DASHBOARD_HTML = '''
                 <div class="stat-value" id="total">-</div>
                 <div class="stat-label">Total Network Providers</div>
                 <div class="stat-delta"><span id="day-delta">-</span> (24h)</div>
+                <div class="stat-delta" style="font-size: 0.85em; margin-top: 4px;">Range: <span id="day-range">-</span></div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="top-country">-</div>
@@ -645,6 +646,7 @@ DASHBOARD_HTML = '''
             <div class="stat-card">
                 <div class="stat-value" id="hour-delta">-</div>
                 <div class="stat-label">Change (1h)</div>
+                <div class="stat-delta" style="font-size: 0.85em;">Range: <span id="hour-range">-</span></div>
                 <div class="last-update">Refreshing in <span id="refresh-timer">5m</span></div>
             </div>
             <div class="stat-card">
@@ -799,9 +801,15 @@ DASHBOARD_HTML = '''
             document.getElementById('day-delta').textContent = (dayDelta >= 0 ? '+' : '') + dayDelta.toLocaleString();
             document.getElementById('day-delta').className = dayDelta >= 0 ? 'delta-positive' : 'delta-negative';
 
+            const dayRange = summary.day_range;
+            document.getElementById('day-range').textContent = `${dayRange[0].toLocaleString()} - ${dayRange[1].toLocaleString()}`;
+
             const hourDelta = summary.hour_delta;
             document.getElementById('hour-delta').textContent = (hourDelta >= 0 ? '+' : '') + hourDelta.toLocaleString();
             document.getElementById('hour-delta').className = hourDelta >= 0 ? 'delta-positive' : 'delta-negative';
+
+            const hourRange = summary.hour_range;
+            document.getElementById('hour-range').textContent = `${hourRange[0].toLocaleString()} - ${hourRange[1].toLocaleString()}`;
 
             // Network total chart with MA
             if (totalChart) totalChart.destroy();
