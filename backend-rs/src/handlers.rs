@@ -13,20 +13,21 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
     };
 
     let current_total = match db::get_total_at_timestamp(pool, &latest).await {
-        Ok(total) => total,
+        Ok(Some(total)) => total,
+        Ok(None) => 0,
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
     let hour_ago = format_time_offset(&latest, -60);
-    let hour_ago_total = db::get_total_at_timestamp(pool, &hour_ago).await.unwrap_or(current_total);
+    let hour_ago_total = db::get_total_at_timestamp(pool, &hour_ago).await.unwrap_or(None).unwrap_or(current_total);
     let hour_delta = current_total - hour_ago_total;
 
     let day_ago = format_time_offset(&latest, -1440);
-    let day_ago_total = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(current_total);
+    let day_ago_total = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(None).unwrap_or(current_total);
     let day_delta = current_total - day_ago_total;
 
     let week_ago = format_time_offset(&latest, -10080);
-    let week_ago_total = db::get_total_at_timestamp(pool, &week_ago).await.unwrap_or(current_total);
+    let week_ago_total = db::get_total_at_timestamp(pool, &week_ago).await.unwrap_or(None).unwrap_or(current_total);
     let week_delta = current_total - week_ago_total;
     let two_week_ago = format_time_offset(&latest, -20160);
     let month_ago = format_time_offset(&latest, -43200);
@@ -360,12 +361,13 @@ pub async fn api_growth_projection(state: web::Data<AppState>) -> HttpResponse {
     };
 
     let current = match db::get_total_at_timestamp(pool, &latest).await {
-        Ok(t) => t,
+        Ok(Some(t)) => t,
+        Ok(None) => 0,
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
     let day_ago = format_time_offset(&latest, -1440);
-    let past = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(current);
+    let past = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(None).unwrap_or(current);
 
     let daily_growth = current - past;
     let growth_rate = if past > 0 {

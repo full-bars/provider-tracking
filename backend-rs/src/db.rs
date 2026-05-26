@@ -14,15 +14,14 @@ pub async fn get_latest_timestamp(pool: &SqlitePool) -> Result<String> {
     Ok(result)
 }
 
-pub async fn get_total_at_timestamp(pool: &SqlitePool, timestamp: &str) -> Result<i32> {
+pub async fn get_total_at_timestamp(pool: &SqlitePool, timestamp: &str) -> Result<Option<i32>> {
     let result = sqlx::query_scalar::<_, i32>(
         "SELECT SUM(provider_count) FROM provider_counts
          WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)"
     )
     .bind(timestamp)
     .fetch_optional(pool)
-    .await?
-    .unwrap_or(0);
+    .await?;
 
     Ok(result)
 }
