@@ -87,10 +87,10 @@ def get_anomalies(threshold=0.15):
     """Get countries with >threshold change in the last hour."""
     conn = get_db()
     cursor = conn.cursor()
-    
+
     latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
     hour_ago = (datetime.fromisoformat(latest) - timedelta(hours=1)).isoformat(sep=' ')
-    
+
     cursor.execute(f"""
         WITH current AS (
             SELECT country_code, country_name, provider_count
@@ -111,12 +111,17 @@ def get_anomalies(threshold=0.15):
         FROM current c
         LEFT JOIN past p ON c.country_code = p.country_code
         WHERE ABS(CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0)) > ?
-        ORDER BY ABS(pct_change) DESC
     """, (latest, hour_ago, threshold))
-    anomalies = [dict(row) for row in cursor.fetchall()]
-    
+    all_anomalies = [dict(row) for row in cursor.fetchall()]
+
+    gains = [a for a in all_anomalies if a['pct_change'] > 0]
+    losses = [a for a in all_anomalies if a['pct_change'] < 0]
+
+    gains.sort(key=lambda x: abs(x['pct_change']), reverse=True)
+    losses.sort(key=lambda x: abs(x['pct_change']), reverse=True)
+
     conn.close()
-    return anomalies
+    return gains + losses
 
 def report_hourly():
     """Send hourly report."""
