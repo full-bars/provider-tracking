@@ -270,28 +270,38 @@ def api_anomalies():
     latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
     hour_ago = (datetime.fromisoformat(latest) - timedelta(hours=1)).isoformat(sep=' ')
 
+    # Get current data
     cursor.execute("""
-        WITH current AS (
-            SELECT country_code, country_name, provider_count
-            FROM provider_counts WHERE timestamp = ?
-        ),
-        past AS (
-            SELECT country_code, provider_count
-            FROM provider_counts
-            WHERE timestamp = (
-                SELECT MAX(timestamp) FROM provider_counts WHERE timestamp <= ?
-            )
-        )
-        SELECT c.country_name, c.country_code, c.provider_count,
-               c.provider_count - p.provider_count as delta,
-               CAST(c.provider_count - p.provider_count AS FLOAT) / p.provider_count * 100 as pct_change
-        FROM current c
-        INNER JOIN past p ON c.country_code = p.country_code
-        WHERE p.provider_count > 0
-          AND ABS(CAST(c.provider_count - p.provider_count AS FLOAT) / p.provider_count) > ?
-    """, (latest, hour_ago, threshold))
+        SELECT country_code, country_name, provider_count
+        FROM provider_counts WHERE timestamp = ?
+        ORDER BY provider_count DESC
+    """, (latest,))
+    current_rows = [dict(row) for row in cursor.fetchall()]
 
-    all_anomalies = [dict(row) for row in cursor.fetchall()]
+    all_anomalies = []
+    for current in current_rows:
+        # Get each country's historical data (most recent at or before hour_ago)
+        cursor.execute("""
+            SELECT provider_count FROM provider_counts
+            WHERE country_code = ? AND timestamp <= ?
+            ORDER BY timestamp DESC LIMIT 1
+        """, (current['country_code'], hour_ago))
+        past_row = cursor.fetchone()
+
+        if past_row and past_row[0] > 0:
+            past_count = past_row[0]
+            delta = current['provider_count'] - past_count
+            pct_change = (delta / past_count) * 100
+
+            if abs(pct_change) > threshold_pct:
+                all_anomalies.append({
+                    'country_code': current['country_code'],
+                    'country_name': current['country_name'],
+                    'provider_count': current['provider_count'],
+                    'delta': delta,
+                    'pct_change': pct_change
+                })
+
     conn.close()
 
     gains = [a for a in all_anomalies if a['pct_change'] > 0]
