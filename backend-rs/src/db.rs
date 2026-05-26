@@ -142,6 +142,35 @@ pub async fn get_country_history(pool: &SqlitePool, country_code: &str, limit: i
     Ok(result)
 }
 
+pub async fn get_network_range(
+    pool: &SqlitePool,
+    since_timestamp: &str,
+    until_timestamp: &str,
+) -> Result<(i32, i32)> {
+    #[derive(sqlx::FromRow)]
+    struct Range {
+        high: Option<i32>,
+        low: Option<i32>,
+    }
+
+    let result = sqlx::query_as::<_, Range>(
+        "WITH totals AS (
+            SELECT SUM(provider_count) as total, timestamp
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low
+        FROM totals"
+    )
+    .bind(since_timestamp)
+    .bind(until_timestamp)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((result.high.unwrap_or(0), result.low.unwrap_or(0)))
+}
+
 pub async fn get_anomalies(
     pool: &SqlitePool,
     current_timestamp: &str,

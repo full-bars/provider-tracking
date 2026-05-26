@@ -83,6 +83,28 @@ def get_movers(since_timestamp, window_name):
     conn.close()
     return gainers, losers
 
+def get_network_range(since_timestamp):
+    """Get high and low network totals for a time period."""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
+
+    cursor.execute("""
+        WITH totals AS (
+            SELECT SUM(provider_count) as total, timestamp
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low
+        FROM totals
+    """, (since_timestamp, latest))
+
+    result = cursor.fetchone()
+    conn.close()
+    return result['high'] or 0, result['low'] or 0
+
 def get_anomalies(threshold=0.15):
     """Get countries with >threshold change in the last hour."""
     conn = get_db()
@@ -127,31 +149,32 @@ def report_hourly():
     """Send hourly report."""
     conn = get_db()
     cursor = conn.cursor()
-    
+
     latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
     hour_ago = (datetime.fromisoformat(latest) - timedelta(hours=1)).isoformat(sep=' ')
-    
+
     # Current total
     cursor.execute("SELECT SUM(provider_count) as total FROM provider_counts WHERE timestamp = ?", (latest,))
     current_total = cursor.fetchone()['total']
-    
+
     # Hour-ago total
     cursor.execute("SELECT SUM(provider_count) as total FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", (hour_ago,))
     hour_ago_total = cursor.fetchone()['total'] or current_total
     hour_delta = current_total - hour_ago_total
-    
+
     conn.close()
-    
+
+    hour_high, hour_low = get_network_range(hour_ago)
     gainers, losers = get_movers(hour_ago, "1h")
     anomalies = get_anomalies(threshold=0.15)
-    
+
     embeds = [{
         "title": "⏰ Hourly Provider Update",
         "color": 3066993 if hour_delta >= 0 else 15158332,
         "fields": [
             {
                 "name": "Total Network Providers",
-                "value": f"{current_total:,} ({hour_delta:+,} 1h)",
+                "value": f"{current_total:,} ({hour_delta:+,} 1h) | Range: {hour_low:,} - {hour_high:,}",
                 "inline": False
             },
             {
@@ -184,37 +207,38 @@ def report_daily():
     """Send daily summary."""
     conn = get_db()
     cursor = conn.cursor()
-    
+
     latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
     day_ago = (datetime.fromisoformat(latest) - timedelta(days=1)).isoformat(sep=' ')
-    
+
     # Totals
     cursor.execute("SELECT SUM(provider_count) as total FROM provider_counts WHERE timestamp = ?", (latest,))
     current_total = cursor.fetchone()['total']
-    
+
     cursor.execute("SELECT SUM(provider_count) as total FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", (day_ago,))
     day_ago_total = cursor.fetchone()['total'] or current_total
     day_delta = current_total - day_ago_total
-    
+
     # Top 10
     cursor.execute("SELECT country_name, country_code, provider_count FROM provider_counts WHERE timestamp = ? ORDER BY provider_count DESC LIMIT 10", (latest,))
     top_10 = [dict(row) for row in cursor.fetchall()]
-    
+
     conn.close()
-    
+
+    day_high, day_low = get_network_range(day_ago)
     gainers, losers = get_movers(day_ago, "24h")
-    
+
     top_10_str = "\n".join([f"{i}. **{c['country_name']}** ({c['country_code'].upper()}): {c['provider_count']:,}" for i, c in enumerate(top_10, 1)])
     gainers_str = "\n".join([f"**{g['country_name']}** (+{g['delta']})" for g in gainers[:5]])
     losers_str = "\n".join([f"**{l['country_name']}** ({l['delta']})" for l in losers[:5]])
-    
+
     embeds = [{
         "title": "📊 Daily Summary",
         "color": 3066993 if day_delta >= 0 else 15158332,
         "fields": [
             {
                 "name": "Total Network",
-                "value": f"{current_total:,} ({day_delta:+,} 24h)",
+                "value": f"{current_total:,} ({day_delta:+,} 24h) | Range: {day_low:,} - {day_high:,}",
                 "inline": False
             },
             {
@@ -243,10 +267,10 @@ def report_weekly():
     """Send weekly summary."""
     conn = get_db()
     cursor = conn.cursor()
-    
+
     latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
     week_ago = (datetime.fromisoformat(latest) - timedelta(days=7)).isoformat(sep=' ')
-    
+
     # Totals
     cursor.execute("SELECT SUM(provider_count) as total FROM provider_counts WHERE timestamp = ?", (latest,))
     current_total = cursor.fetchone()['total']
@@ -254,26 +278,27 @@ def report_weekly():
     cursor.execute("SELECT SUM(provider_count) as total FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1", (week_ago,))
     week_ago_total = cursor.fetchone()['total'] or current_total
     week_delta = current_total - week_ago_total
-    
+
     # Top 10
     cursor.execute("SELECT country_name, country_code, provider_count FROM provider_counts WHERE timestamp = ? ORDER BY provider_count DESC LIMIT 10", (latest,))
     top_10 = [dict(row) for row in cursor.fetchall()]
-    
+
     conn.close()
-    
+
+    week_high, week_low = get_network_range(week_ago)
     gainers, losers = get_movers(week_ago, "7d")
-    
+
     top_10_str = "\n".join([f"{i}. **{c['country_name']}** ({c['country_code'].upper()}): {c['provider_count']:,}" for i, c in enumerate(top_10, 1)])
     gainers_str = "\n".join([f"**{g['country_name']}** (+{g['delta']})" for g in gainers[:5]])
     losers_str = "\n".join([f"**{l['country_name']}** ({l['delta']})" for l in losers[:5]])
-    
+
     embeds = [{
         "title": "📈 Weekly Summary",
         "color": 3066993 if week_delta >= 0 else 15158332,
         "fields": [
             {
                 "name": "Total Network",
-                "value": f"{current_total:,} ({week_delta:+,} 7d)",
+                "value": f"{current_total:,} ({week_delta:+,} 7d) | Range: {week_low:,} - {week_high:,}",
                 "inline": False
             },
             {

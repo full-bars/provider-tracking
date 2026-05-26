@@ -25,10 +25,16 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
     let day_ago_total = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(current_total);
     let day_delta = current_total - day_ago_total;
 
+    let week_ago = format_time_offset(&latest, -10080);
+
     let top_10 = match db::get_top_countries(pool, &latest, 10).await {
         Ok(countries) => countries,
         Err(_) => vec![],
     };
+
+    let hour_range = db::get_network_range(pool, &hour_ago, &latest).await.unwrap_or((0, 0));
+    let day_range = db::get_network_range(pool, &day_ago, &latest).await.unwrap_or((0, 0));
+    let week_range = db::get_network_range(pool, &week_ago, &latest).await.unwrap_or((0, 0));
 
     let response = SummaryResponse {
         timestamp: latest,
@@ -36,6 +42,9 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
         hour_delta,
         day_delta,
         top_10,
+        hour_range,
+        day_range,
+        week_range,
     };
 
     HttpResponse::Ok().json(response)

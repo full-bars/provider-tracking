@@ -16,6 +16,9 @@ pub struct SummaryResponse {
     pub hour_delta: i32,
     pub day_delta: i32,
     pub top_10: Vec<CountryCount>,
+    pub hour_range: (i32, i32),
+    pub day_range: (i32, i32),
+    pub week_range: (i32, i32),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

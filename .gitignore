@@ -1,0 +1,9 @@
+CLAUDE.md
+*.db
+*.db-shm
+*.db-wal
+__pycache__/
+*.pyc
+.env
+.env.*
+backend-rs/target/
