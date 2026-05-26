@@ -705,7 +705,6 @@ DASHBOARD_HTML = '''
                 <div style="font-size: 0.85em; margin-top: 8px;">
                     <div class="stat-delta">24h: <span id="day-delta-inline">-</span></div>
                     <div class="stat-delta">7d: <span id="week-delta-inline">-</span></div>
-                    <div class="stat-delta">Range: <span id="hour-range-inline">-</span></div>
                 </div>
                 <div class="last-update">Refreshing in <span id="refresh-timer">5m</span></div>
             </div>
@@ -865,9 +864,6 @@ DASHBOARD_HTML = '''
             const hourDelta = summary.hour_delta;
             document.getElementById('hour-delta').textContent = (hourDelta >= 0 ? '+' : '') + hourDelta.toLocaleString();
             document.getElementById('hour-delta').className = hourDelta >= 0 ? 'delta-positive' : 'delta-negative';
-
-            const hourRange = summary.hour_range;
-            document.getElementById('hour-range-inline').textContent = `${hourRange[0].toLocaleString()} - ${hourRange[1].toLocaleString()}`;
 
             const weekDelta = summary.week_delta;
             document.getElementById('week-delta-inline').textContent = (weekDelta >= 0 ? '+' : '') + weekDelta.toLocaleString();
