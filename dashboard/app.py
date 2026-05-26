@@ -283,13 +283,12 @@ def api_anomalies():
             )
         )
         SELECT c.country_name, c.country_code, c.provider_count,
-               COALESCE(c.provider_count - p.provider_count, 0) as delta,
-               CASE WHEN p.provider_count > 0
-                    THEN CAST(c.provider_count - p.provider_count AS FLOAT) / p.provider_count * 100
-                    ELSE 0 END as pct_change
+               c.provider_count - p.provider_count as delta,
+               CAST(c.provider_count - p.provider_count AS FLOAT) / p.provider_count * 100 as pct_change
         FROM current c
-        LEFT JOIN past p ON c.country_code = p.country_code
-        WHERE ABS(CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0)) > ?
+        INNER JOIN past p ON c.country_code = p.country_code
+        WHERE p.provider_count > 0
+          AND ABS(CAST(c.provider_count - p.provider_count AS FLOAT) / p.provider_count) > ?
     """, (latest, hour_ago, threshold))
 
     all_anomalies = [dict(row) for row in cursor.fetchall()]
