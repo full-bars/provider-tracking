@@ -68,32 +68,14 @@
             <div class="stat-card">
                 <div class="stat-value" id="hour-delta">-</div>
                 <div class="stat-label">Change (1h)</div>
-                <div class="stat-delta" style="font-size: 0.9em;">Range: <span id="hour-range-inline">-</span></div>
+                <div class="stat-delta" style="font-size: 0.85em;">24h: <span id="day-delta-inline">-</span> | 7d: <span id="week-delta-inline">-</span></div>
+                <div class="stat-delta" style="font-size: 0.85em;">Range: <span id="hour-range-inline">-</span></div>
                 <div class="last-update">Refreshing in <span id="refresh-timer">5m</span></div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="growth-rate">-</div>
                 <div class="stat-label">Daily Growth Rate</div>
                 <div class="stat-delta">→ <span id="projected-30d">-</span> in 30d</div>
-            </div>
-        </div>
-
-        <div class="header" style="gap: 20px;">
-            <div class="stat-card">
-                <div class="stat-label">24h Range</div>
-                <div class="stat-value" style="font-size: 1.2em;" id="range-24h">-</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">7d Range</div>
-                <div class="stat-value" style="font-size: 1.2em;" id="range-7d">-</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">14d Range</div>
-                <div class="stat-value" style="font-size: 1.2em;" id="range-14d">-</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">30d Range</div>
-                <div class="stat-value" style="font-size: 1.2em;" id="range-30d">-</div>
             </div>
         </div>
 
@@ -241,6 +223,7 @@
             const dayDelta = summary.day_delta;
             document.getElementById('day-delta').textContent = (dayDelta >= 0 ? '+' : '') + dayDelta.toLocaleString();
             document.getElementById('day-delta').className = dayDelta >= 0 ? 'delta-positive' : 'delta-negative';
+            document.getElementById('day-delta-inline').textContent = (dayDelta >= 0 ? '+' : '') + dayDelta.toLocaleString();
 
             const hourDelta = summary.hour_delta;
             document.getElementById('hour-delta').textContent = (hourDelta >= 0 ? '+' : '') + hourDelta.toLocaleString();
@@ -249,17 +232,8 @@
             const hourRange = summary.hour_range;
             document.getElementById('hour-range-inline').textContent = `${hourRange[0].toLocaleString()} - ${hourRange[1].toLocaleString()}`;
 
-            const dayRange = summary.day_range;
-            document.getElementById('range-24h').textContent = `${dayRange[0].toLocaleString()} - ${dayRange[1].toLocaleString()}`;
-
-            const weekRange = summary.week_range;
-            document.getElementById('range-7d').textContent = `${weekRange[0].toLocaleString()} - ${weekRange[1].toLocaleString()}`;
-
-            const twoWeekRange = summary.two_week_range;
-            document.getElementById('range-14d').textContent = `${twoWeekRange[0].toLocaleString()} - ${twoWeekRange[1].toLocaleString()}`;
-
-            const monthRange = summary.month_range;
-            document.getElementById('range-30d').textContent = `${monthRange[0].toLocaleString()} - ${monthRange[1].toLocaleString()}`;
+            const weekDelta = summary.week_delta;
+            document.getElementById('week-delta-inline').textContent = (weekDelta >= 0 ? '+' : '') + weekDelta.toLocaleString();
 
             // Network total chart with MA
             if (totalChart) totalChart.destroy();

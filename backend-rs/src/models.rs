@@ -15,6 +15,7 @@ pub struct SummaryResponse {
     pub total: i32,
     pub hour_delta: i32,
     pub day_delta: i32,
+    pub week_delta: i32,
     pub top_10: Vec<CountryCount>,
     pub hour_range: (i32, i32),
     pub day_range: (i32, i32),

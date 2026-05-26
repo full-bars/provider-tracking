@@ -26,6 +26,8 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
     let day_delta = current_total - day_ago_total;
 
     let week_ago = format_time_offset(&latest, -10080);
+    let week_ago_total = db::get_total_at_timestamp(pool, &week_ago).await.unwrap_or(current_total);
+    let week_delta = current_total - week_ago_total;
     let two_week_ago = format_time_offset(&latest, -20160);
     let month_ago = format_time_offset(&latest, -43200);
 
@@ -45,6 +47,7 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
         total: current_total,
         hour_delta,
         day_delta,
+        week_delta,
         top_10,
         hour_range: (hour_low, hour_high),
         day_range: (day_low, day_high),
