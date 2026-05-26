@@ -86,8 +86,10 @@ def api_summary():
     day_ago_total = row['total'] if row and row['total'] is not None else current_total
     day_delta = current_total - day_ago_total
 
-    # Week-over-week for range
+    # Time periods for ranges
     week_ago = (datetime.fromisoformat(latest) - timedelta(days=7)).isoformat(sep=' ')
+    two_week_ago = (datetime.fromisoformat(latest) - timedelta(days=14)).isoformat(sep=' ')
+    month_ago = (datetime.fromisoformat(latest) - timedelta(days=30)).isoformat(sep=' ')
 
     # Top 10
     cursor.execute("""
@@ -137,6 +139,32 @@ def api_summary():
     week_high = week_range['high'] or 0
     week_low = week_range['low'] or 0
 
+    cursor.execute("""
+        WITH totals AS (
+            SELECT SUM(provider_count) as total
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low FROM totals
+    """, (two_week_ago, latest))
+    two_week_range = cursor.fetchone()
+    two_week_high = two_week_range['high'] or 0
+    two_week_low = two_week_range['low'] or 0
+
+    cursor.execute("""
+        WITH totals AS (
+            SELECT SUM(provider_count) as total
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low FROM totals
+    """, (month_ago, latest))
+    month_range = cursor.fetchone()
+    month_high = month_range['high'] or 0
+    month_low = month_range['low'] or 0
+
     conn.close()
     return jsonify({
         'timestamp': latest,
@@ -146,7 +174,9 @@ def api_summary():
         'top_10': top_10,
         'hour_range': [hour_low, hour_high],
         'day_range': [day_low, day_high],
-        'week_range': [week_low, week_high]
+        'week_range': [week_low, week_high],
+        'two_week_range': [two_week_low, two_week_high],
+        'month_range': [month_low, month_high]
     })
 
 @app.route('/api/network_total')
@@ -674,6 +704,14 @@ DASHBOARD_HTML = '''
                 <div class="stat-label">7d Range</div>
                 <div class="stat-value" style="font-size: 1.2em;" id="range-7d">-</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-label">14d Range</div>
+                <div class="stat-value" style="font-size: 1.2em;" id="range-14d">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">30d Range</div>
+                <div class="stat-value" style="font-size: 1.2em;" id="range-30d">-</div>
+            </div>
         </div>
 
         <div class="charts">
@@ -833,6 +871,12 @@ DASHBOARD_HTML = '''
 
             const weekRange = summary.week_range;
             document.getElementById('range-7d').textContent = `${weekRange[0].toLocaleString()} - ${weekRange[1].toLocaleString()}`;
+
+            const twoWeekRange = summary.two_week_range;
+            document.getElementById('range-14d').textContent = `${twoWeekRange[0].toLocaleString()} - ${twoWeekRange[1].toLocaleString()}`;
+
+            const monthRange = summary.month_range;
+            document.getElementById('range-30d').textContent = `${monthRange[0].toLocaleString()} - ${monthRange[1].toLocaleString()}`;
 
             // Network total chart with MA
             if (totalChart) totalChart.destroy();

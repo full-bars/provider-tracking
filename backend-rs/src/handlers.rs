@@ -26,6 +26,8 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
     let day_delta = current_total - day_ago_total;
 
     let week_ago = format_time_offset(&latest, -10080);
+    let two_week_ago = format_time_offset(&latest, -20160);
+    let month_ago = format_time_offset(&latest, -43200);
 
     let top_10 = match db::get_top_countries(pool, &latest, 10).await {
         Ok(countries) => countries,
@@ -35,6 +37,8 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
     let (hour_high, hour_low) = db::get_network_range(pool, &hour_ago, &latest).await.unwrap_or((0, 0));
     let (day_high, day_low) = db::get_network_range(pool, &day_ago, &latest).await.unwrap_or((0, 0));
     let (week_high, week_low) = db::get_network_range(pool, &week_ago, &latest).await.unwrap_or((0, 0));
+    let (two_week_high, two_week_low) = db::get_network_range(pool, &two_week_ago, &latest).await.unwrap_or((0, 0));
+    let (month_high, month_low) = db::get_network_range(pool, &month_ago, &latest).await.unwrap_or((0, 0));
 
     let response = SummaryResponse {
         timestamp: latest,
@@ -45,6 +49,8 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
         hour_range: (hour_low, hour_high),
         day_range: (day_low, day_high),
         week_range: (week_low, week_high),
+        two_week_range: (two_week_low, two_week_high),
+        month_range: (month_low, month_high),
     };
 
     HttpResponse::Ok().json(response)

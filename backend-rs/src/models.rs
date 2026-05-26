@@ -19,6 +19,8 @@ pub struct SummaryResponse {
     pub hour_range: (i32, i32),
     pub day_range: (i32, i32),
     pub week_range: (i32, i32),
+    pub two_week_range: (i32, i32),
+    pub month_range: (i32, i32),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

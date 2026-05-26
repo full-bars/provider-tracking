@@ -77,6 +77,29 @@
             </div>
         </div>
 
+        <div class="header" style="gap: 20px;">
+            <div class="stat-card">
+                <div class="stat-label">1h Range</div>
+                <div class="stat-value" style="font-size: 1.2em;" id="range-1h">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">24h Range</div>
+                <div class="stat-value" style="font-size: 1.2em;" id="range-24h">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">7d Range</div>
+                <div class="stat-value" style="font-size: 1.2em;" id="range-7d">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">14d Range</div>
+                <div class="stat-value" style="font-size: 1.2em;" id="range-14d">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">30d Range</div>
+                <div class="stat-value" style="font-size: 1.2em;" id="range-30d">-</div>
+            </div>
+        </div>
+
         <div class="charts">
             <div class="chart-card">
                 <h3>Network Total Over Time</h3>
@@ -225,6 +248,21 @@
             const hourDelta = summary.hour_delta;
             document.getElementById('hour-delta').textContent = (hourDelta >= 0 ? '+' : '') + hourDelta.toLocaleString();
             document.getElementById('hour-delta').className = hourDelta >= 0 ? 'delta-positive' : 'delta-negative';
+
+            const hourRange = summary.hour_range;
+            document.getElementById('range-1h').textContent = `${hourRange[0].toLocaleString()} - ${hourRange[1].toLocaleString()}`;
+
+            const dayRange = summary.day_range;
+            document.getElementById('range-24h').textContent = `${dayRange[0].toLocaleString()} - ${dayRange[1].toLocaleString()}`;
+
+            const weekRange = summary.week_range;
+            document.getElementById('range-7d').textContent = `${weekRange[0].toLocaleString()} - ${weekRange[1].toLocaleString()}`;
+
+            const twoWeekRange = summary.two_week_range;
+            document.getElementById('range-14d').textContent = `${twoWeekRange[0].toLocaleString()} - ${twoWeekRange[1].toLocaleString()}`;
+
+            const monthRange = summary.month_range;
+            document.getElementById('range-30d').textContent = `${monthRange[0].toLocaleString()} - ${monthRange[1].toLocaleString()}`;
 
             // Network total chart with MA
             if (totalChart) totalChart.destroy();
