@@ -175,6 +175,30 @@ def api_summary():
     month_high = month_range['high'] or 0
     month_low = month_range['low'] or 0
 
+    # All-time high
+    cursor.execute("""
+        WITH totals AS (
+            SELECT timestamp, SUM(provider_count) as total
+            FROM provider_counts GROUP BY timestamp
+        )
+        SELECT timestamp, total FROM totals ORDER BY total DESC LIMIT 1
+    """)
+    ath_row = cursor.fetchone()
+    ath_value = ath_row['total'] if ath_row else current_total
+    ath_timestamp = ath_row['timestamp'] if ath_row else latest
+
+    # All-time low
+    cursor.execute("""
+        WITH totals AS (
+            SELECT timestamp, SUM(provider_count) as total
+            FROM provider_counts GROUP BY timestamp
+        )
+        SELECT timestamp, total FROM totals ORDER BY total ASC LIMIT 1
+    """)
+    atl_row = cursor.fetchone()
+    atl_value = atl_row['total'] if atl_row else current_total
+    atl_timestamp = atl_row['timestamp'] if atl_row else latest
+
     conn.close()
     return jsonify({
         'timestamp': latest,
@@ -187,7 +211,9 @@ def api_summary():
         'day_range': [day_low, day_high],
         'week_range': [week_low, week_high],
         'two_week_range': [two_week_low, two_week_high],
-        'month_range': [month_low, month_high]
+        'month_range': [month_low, month_high],
+        'ath': {'value': ath_value, 'timestamp': ath_timestamp},
+        'atl': {'value': atl_value, 'timestamp': atl_timestamp},
     })
 
 @app.route('/api/network_total')
@@ -694,6 +720,10 @@ DASHBOARD_HTML = '''
                 <div class="stat-value" id="total">-</div>
                 <div class="stat-label">Total Network Providers</div>
                 <div class="stat-delta"><span id="day-delta">-</span> (24h)</div>
+                <div style="margin-top:10px; padding-top:10px; border-top:1px solid #2d3748;">
+                    <div style="font-size:11px; color:#f59e0b;">▲ ATH &nbsp;<span id="ath-value" style="font-weight:600;">-</span> <span id="ath-date" style="color:#6b7280; font-size:10px;"></span></div>
+                    <div style="font-size:11px; color:#f87171; margin-top:3px;">▼ ATL &nbsp;<span id="atl-value" style="font-weight:600;">-</span> <span id="atl-date" style="color:#6b7280; font-size:10px;"></span></div>
+                </div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="top-country">-</div>
@@ -871,8 +901,41 @@ DASHBOARD_HTML = '''
             document.getElementById('week-delta-inline').textContent = (weekDelta >= 0 ? '+' : '') + weekDelta.toLocaleString();
             document.getElementById('week-delta-inline').className = weekDelta >= 0 ? 'delta-positive' : 'delta-negative';
 
-            // Network total chart with MA
+            // ATH / ATL badges
+            if (summary.ath) {
+                document.getElementById('ath-value').textContent = summary.ath.value.toLocaleString();
+                const athDate = new Date(summary.ath.timestamp);
+                document.getElementById('ath-date').textContent = athDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'});
+            }
+            if (summary.atl) {
+                document.getElementById('atl-value').textContent = summary.atl.value.toLocaleString();
+                const atlDate = new Date(summary.atl.timestamp);
+                document.getElementById('atl-date').textContent = atlDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'});
+            }
+
+            // Network total chart with MA + ATH/ATL reference lines
             if (totalChart) totalChart.destroy();
+            const n = networkTotal.length;
+            const athDataset = summary.ath ? [{
+                label: `ATH ${summary.ath.value.toLocaleString()}`,
+                data: Array(n).fill(summary.ath.value),
+                borderColor: 'rgba(245, 158, 11, 0.5)',
+                borderDash: [4, 4],
+                borderWidth: 1,
+                pointRadius: 0,
+                fill: false,
+                order: 10
+            }] : [];
+            const atlDataset = summary.atl ? [{
+                label: `ATL ${summary.atl.value.toLocaleString()}`,
+                data: Array(n).fill(summary.atl.value),
+                borderColor: 'rgba(248, 113, 113, 0.45)',
+                borderDash: [4, 4],
+                borderWidth: 1,
+                pointRadius: 0,
+                fill: false,
+                order: 10
+            }] : [];
             totalChart = new Chart(document.getElementById('totalChart'), {
                 type: 'line',
                 data: {
@@ -897,12 +960,12 @@ DASHBOARD_HTML = '''
                         borderWidth: 1,
                         pointRadius: 0,
                         fill: false
-                    }]
+                    }, ...athDataset, ...atlDataset]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: true, labels: { color: '#9ca3af' } }, filler: { propagate: true } },
+                    plugins: { legend: { display: true, labels: { color: '#9ca3af', filter: item => item.text !== '' } }, filler: { propagate: true } },
                     scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af', maxTicksLimit: 12 }, grid: { display: false } } }
                 }
             });

@@ -43,6 +43,8 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
     let (two_week_high, two_week_low) = db::get_network_range(pool, &two_week_ago, &latest).await.unwrap_or((0, 0));
     let (month_high, month_low) = db::get_network_range(pool, &month_ago, &latest).await.unwrap_or((0, 0));
 
+    let ((ath_value, ath_ts), (atl_value, atl_ts)) = db::get_ath_atl(pool).await.unwrap_or(((current_total, latest.clone()), (current_total, latest.clone())));
+
     let response = SummaryResponse {
         timestamp: latest,
         total: current_total,
@@ -55,6 +57,8 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
         week_range: (week_low, week_high),
         two_week_range: (two_week_low, two_week_high),
         month_range: (month_low, month_high),
+        ath: AthAtl { value: ath_value, timestamp: ath_ts },
+        atl: AthAtl { value: atl_value, timestamp: atl_ts },
     };
 
     HttpResponse::Ok().json(response)

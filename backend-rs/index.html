@@ -60,6 +60,10 @@
                 <div class="stat-value" id="total">-</div>
                 <div class="stat-label">Total Network Providers</div>
                 <div class="stat-delta"><span id="day-delta">-</span> (24h)</div>
+                <div style="margin-top:10px; padding-top:10px; border-top:1px solid #2d3748;">
+                    <div style="font-size:11px; color:#f59e0b;">▲ ATH &nbsp;<span id="ath-value" style="font-weight:600;">-</span> <span id="ath-date" style="color:#6b7280; font-size:10px;"></span></div>
+                    <div style="font-size:11px; color:#f87171; margin-top:3px;">▼ ATL &nbsp;<span id="atl-value" style="font-weight:600;">-</span> <span id="atl-date" style="color:#6b7280; font-size:10px;"></span></div>
+                </div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="top-country">-</div>
@@ -237,7 +241,19 @@
             document.getElementById('week-delta-inline').textContent = (weekDelta >= 0 ? '+' : '') + weekDelta.toLocaleString();
             document.getElementById('week-delta-inline').className = weekDelta >= 0 ? 'delta-positive' : 'delta-negative';
 
-            // Network total chart with MA
+            // ATH / ATL badges
+            if (summary.ath) {
+                document.getElementById('ath-value').textContent = summary.ath.value.toLocaleString();
+                const athDate = new Date(summary.ath.timestamp);
+                document.getElementById('ath-date').textContent = athDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'});
+            }
+            if (summary.atl) {
+                document.getElementById('atl-value').textContent = summary.atl.value.toLocaleString();
+                const atlDate = new Date(summary.atl.timestamp);
+                document.getElementById('atl-date').textContent = atlDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'});
+            }
+
+            // Network total chart with MA + ATH/ATL reference lines
             if (totalChart) totalChart.destroy();
             const totalLabels = networkTotal.map(d => {
                 const dt = new Date(d.timestamp);
@@ -247,6 +263,27 @@
                 const full = `${dt.toLocaleDateString()} ${dt.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`;
                 return { short, full };
             });
+            const n = networkTotal.length;
+            const athDataset = summary.ath ? [{
+                label: `ATH ${summary.ath.value.toLocaleString()}`,
+                data: Array(n).fill(summary.ath.value),
+                borderColor: 'rgba(245, 158, 11, 0.5)',
+                borderDash: [4, 4],
+                borderWidth: 1,
+                pointRadius: 0,
+                fill: false,
+                order: 10
+            }] : [];
+            const atlDataset = summary.atl ? [{
+                label: `ATL ${summary.atl.value.toLocaleString()}`,
+                data: Array(n).fill(summary.atl.value),
+                borderColor: 'rgba(248, 113, 113, 0.45)',
+                borderDash: [4, 4],
+                borderWidth: 1,
+                pointRadius: 0,
+                fill: false,
+                order: 10
+            }] : [];
             totalChart = new Chart(document.getElementById('totalChart'), {
                 type: 'line',
                 data: {
@@ -266,13 +303,13 @@
                         borderWidth: 1,
                         pointRadius: 0,
                         fill: false
-                    }]
+                    }, ...athDataset, ...atlDataset]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: true, labels: { color: '#9ca3af' } },
+                        legend: { display: true, labels: { color: '#9ca3af', filter: item => item.text !== '' } },
                         filler: { propagate: true },
                         tooltip: {
                             callbacks: {

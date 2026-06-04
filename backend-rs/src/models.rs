@@ -10,6 +10,12 @@ pub struct ProviderCount {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AthAtl {
+    pub value: i32,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SummaryResponse {
     pub timestamp: String,
     pub total: i32,
@@ -22,6 +28,8 @@ pub struct SummaryResponse {
     pub week_range: (i32, i32),
     pub two_week_range: (i32, i32),
     pub month_range: (i32, i32),
+    pub ath: AthAtl,
+    pub atl: AthAtl,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

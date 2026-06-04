@@ -171,6 +171,40 @@ pub async fn get_network_range(
     Ok((result.high.unwrap_or(0), result.low.unwrap_or(0)))
 }
 
+pub async fn get_ath_atl(pool: &SqlitePool) -> Result<((i32, String), (i32, String))> {
+    #[derive(sqlx::FromRow)]
+    struct Record {
+        total: Option<i32>,
+        timestamp: Option<String>,
+    }
+
+    let ath = sqlx::query_as::<_, Record>(
+        "WITH totals AS (
+            SELECT timestamp, SUM(provider_count) as total
+            FROM provider_counts GROUP BY timestamp
+        )
+        SELECT timestamp, total FROM totals ORDER BY total DESC LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await?
+    .and_then(|r| Some((r.total?, r.timestamp?)))
+    .unwrap_or((0, String::new()));
+
+    let atl = sqlx::query_as::<_, Record>(
+        "WITH totals AS (
+            SELECT timestamp, SUM(provider_count) as total
+            FROM provider_counts GROUP BY timestamp
+        )
+        SELECT timestamp, total FROM totals ORDER BY total ASC LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await?
+    .and_then(|r| Some((r.total?, r.timestamp?)))
+    .unwrap_or((0, String::new()));
+
+    Ok((ath, atl))
+}
+
 pub async fn get_anomalies(
     pool: &SqlitePool,
     current_timestamp: &str,
