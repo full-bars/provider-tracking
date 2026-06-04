@@ -10,12 +10,26 @@ pub struct ProviderCount {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AthAtl {
+    pub value: i32,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SummaryResponse {
     pub timestamp: String,
     pub total: i32,
     pub hour_delta: i32,
     pub day_delta: i32,
+    pub week_delta: i32,
     pub top_10: Vec<CountryCount>,
+    pub hour_range: (i32, i32),
+    pub day_range: (i32, i32),
+    pub week_range: (i32, i32),
+    pub two_week_range: (i32, i32),
+    pub month_range: (i32, i32),
+    pub ath: AthAtl,
+    pub atl: AthAtl,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

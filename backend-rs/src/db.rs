@@ -14,15 +14,15 @@ pub async fn get_latest_timestamp(pool: &SqlitePool) -> Result<String> {
     Ok(result)
 }
 
-pub async fn get_total_at_timestamp(pool: &SqlitePool, timestamp: &str) -> Result<i32> {
-    let result = sqlx::query_scalar::<_, i32>(
+pub async fn get_total_at_timestamp(pool: &SqlitePool, timestamp: &str) -> Result<Option<i32>> {
+    let result = sqlx::query_scalar::<_, Option<i32>>(
         "SELECT SUM(provider_count) FROM provider_counts
          WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)"
     )
     .bind(timestamp)
     .fetch_optional(pool)
     .await?
-    .unwrap_or(0);
+    .flatten();
 
     Ok(result)
 }
@@ -142,6 +142,69 @@ pub async fn get_country_history(pool: &SqlitePool, country_code: &str, limit: i
     Ok(result)
 }
 
+pub async fn get_network_range(
+    pool: &SqlitePool,
+    since_timestamp: &str,
+    until_timestamp: &str,
+) -> Result<(i32, i32)> {
+    #[derive(sqlx::FromRow)]
+    struct Range {
+        high: Option<i32>,
+        low: Option<i32>,
+    }
+
+    let result = sqlx::query_as::<_, Range>(
+        "WITH totals AS (
+            SELECT SUM(provider_count) as total, timestamp
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low
+        FROM totals"
+    )
+    .bind(since_timestamp)
+    .bind(until_timestamp)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((result.high.unwrap_or(0), result.low.unwrap_or(0)))
+}
+
+pub async fn get_ath_atl(pool: &SqlitePool) -> Result<((i32, String), (i32, String))> {
+    #[derive(sqlx::FromRow)]
+    struct Record {
+        total: Option<i32>,
+        timestamp: Option<String>,
+    }
+
+    let ath = sqlx::query_as::<_, Record>(
+        "WITH totals AS (
+            SELECT timestamp, SUM(provider_count) as total
+            FROM provider_counts GROUP BY timestamp
+        )
+        SELECT timestamp, total FROM totals ORDER BY total DESC LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await?
+    .and_then(|r| Some((r.total?, r.timestamp?)))
+    .unwrap_or((0, String::new()));
+
+    let atl = sqlx::query_as::<_, Record>(
+        "WITH totals AS (
+            SELECT timestamp, SUM(provider_count) as total
+            FROM provider_counts GROUP BY timestamp
+        )
+        SELECT timestamp, total FROM totals ORDER BY total ASC LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await?
+    .and_then(|r| Some((r.total?, r.timestamp?)))
+    .unwrap_or((0, String::new()));
+
+    Ok((ath, atl))
+}
+
 pub async fn get_anomalies(
     pool: &SqlitePool,
     current_timestamp: &str,
@@ -180,8 +243,8 @@ pub async fn get_anomalies(
         }
     }
 
-    gains.sort_by(|a, b| b.percent_change.partial_cmp(&a.percent_change).unwrap());
-    losses.sort_by(|a, b| a.percent_change.partial_cmp(&b.percent_change).unwrap());
+    gains.sort_by(|a, b| b.percent_change.abs().partial_cmp(&a.percent_change.abs()).unwrap());
+    losses.sort_by(|a, b| b.percent_change.abs().partial_cmp(&a.percent_change.abs()).unwrap());
 
     Ok((gains, losses))
 }

@@ -13,29 +13,52 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
     };
 
     let current_total = match db::get_total_at_timestamp(pool, &latest).await {
-        Ok(total) => total,
+        Ok(Some(total)) => total,
+        Ok(None) => 0,
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
     let hour_ago = format_time_offset(&latest, -60);
-    let hour_ago_total = db::get_total_at_timestamp(pool, &hour_ago).await.unwrap_or(current_total);
+    let hour_ago_total = db::get_total_at_timestamp(pool, &hour_ago).await.unwrap_or(None).unwrap_or(current_total);
     let hour_delta = current_total - hour_ago_total;
 
     let day_ago = format_time_offset(&latest, -1440);
-    let day_ago_total = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(current_total);
+    let day_ago_total = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(None).unwrap_or(current_total);
     let day_delta = current_total - day_ago_total;
+
+    let week_ago = format_time_offset(&latest, -10080);
+    let week_ago_total = db::get_total_at_timestamp(pool, &week_ago).await.unwrap_or(None).unwrap_or(current_total);
+    let week_delta = current_total - week_ago_total;
+    let two_week_ago = format_time_offset(&latest, -20160);
+    let month_ago = format_time_offset(&latest, -43200);
 
     let top_10 = match db::get_top_countries(pool, &latest, 10).await {
         Ok(countries) => countries,
         Err(_) => vec![],
     };
 
+    let (hour_high, hour_low) = db::get_network_range(pool, &hour_ago, &latest).await.unwrap_or((0, 0));
+    let (day_high, day_low) = db::get_network_range(pool, &day_ago, &latest).await.unwrap_or((0, 0));
+    let (week_high, week_low) = db::get_network_range(pool, &week_ago, &latest).await.unwrap_or((0, 0));
+    let (two_week_high, two_week_low) = db::get_network_range(pool, &two_week_ago, &latest).await.unwrap_or((0, 0));
+    let (month_high, month_low) = db::get_network_range(pool, &month_ago, &latest).await.unwrap_or((0, 0));
+
+    let ((ath_value, ath_ts), (atl_value, atl_ts)) = db::get_ath_atl(pool).await.unwrap_or(((current_total, latest.clone()), (current_total, latest.clone())));
+
     let response = SummaryResponse {
         timestamp: latest,
         total: current_total,
         hour_delta,
         day_delta,
+        week_delta,
         top_10,
+        hour_range: (hour_low, hour_high),
+        day_range: (day_low, day_high),
+        week_range: (week_low, week_high),
+        two_week_range: (two_week_low, two_week_high),
+        month_range: (month_low, month_high),
+        ath: AthAtl { value: ath_value, timestamp: ath_ts },
+        atl: AthAtl { value: atl_value, timestamp: atl_ts },
     };
 
     HttpResponse::Ok().json(response)
@@ -342,12 +365,13 @@ pub async fn api_growth_projection(state: web::Data<AppState>) -> HttpResponse {
     };
 
     let current = match db::get_total_at_timestamp(pool, &latest).await {
-        Ok(t) => t,
+        Ok(Some(t)) => t,
+        Ok(None) => 0,
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
     let day_ago = format_time_offset(&latest, -1440);
-    let past = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(current);
+    let past = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(None).unwrap_or(current);
 
     let daily_growth = current - past;
     let growth_rate = if past > 0 {

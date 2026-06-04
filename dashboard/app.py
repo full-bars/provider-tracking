@@ -55,37 +55,52 @@ def dashboard():
 def api_summary():
     conn = get_db()
     cursor = conn.cursor()
-    
+
     # Current totals
     cursor.execute("SELECT MAX(timestamp) as latest FROM provider_counts")
     latest = cursor.fetchone()['latest']
-    
+
     cursor.execute("""
-        SELECT SUM(provider_count) as total FROM provider_counts 
+        SELECT SUM(provider_count) as total FROM provider_counts
         WHERE timestamp = ?
     """, (latest,))
     current_total = cursor.fetchone()['total']
-    
+
     # Hour-over-hour delta
     hour_ago = (datetime.fromisoformat(latest) - timedelta(hours=1)).isoformat(sep=' ')
     cursor.execute("""
-        SELECT SUM(provider_count) as total FROM provider_counts 
+        SELECT SUM(provider_count) as total FROM provider_counts
         WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)
     """, (hour_ago,))
     row = cursor.fetchone()
     hour_ago_total = row['total'] if row and row['total'] is not None else current_total
     hour_delta = current_total - hour_ago_total
-    
+
     # Day-over-day delta
     day_ago = (datetime.fromisoformat(latest) - timedelta(days=1)).isoformat(sep=' ')
     cursor.execute("""
-        SELECT SUM(provider_count) as total FROM provider_counts 
+        SELECT SUM(provider_count) as total FROM provider_counts
         WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)
     """, (day_ago,))
     row = cursor.fetchone()
     day_ago_total = row['total'] if row and row['total'] is not None else current_total
     day_delta = current_total - day_ago_total
-    
+
+    # Week-over-week delta
+    week_ago = (datetime.fromisoformat(latest) - timedelta(days=7)).isoformat(sep=' ')
+    cursor.execute("""
+        SELECT SUM(provider_count) as total FROM provider_counts
+        WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)
+    """, (week_ago,))
+    row = cursor.fetchone()
+    week_ago_total = row['total'] if row and row['total'] is not None else current_total
+    week_delta = current_total - week_ago_total
+
+    # Time periods for ranges
+    week_ago = (datetime.fromisoformat(latest) - timedelta(days=7)).isoformat(sep=' ')
+    two_week_ago = (datetime.fromisoformat(latest) - timedelta(days=14)).isoformat(sep=' ')
+    month_ago = (datetime.fromisoformat(latest) - timedelta(days=30)).isoformat(sep=' ')
+
     # Top 10
     cursor.execute("""
         SELECT country_name, country_code, provider_count
@@ -94,13 +109,111 @@ def api_summary():
     """, (latest,))
     top_10 = [dict(row) for row in cursor.fetchall()]
 
+    # High/low ranges
+    cursor.execute("""
+        WITH totals AS (
+            SELECT SUM(provider_count) as total
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low FROM totals
+    """, (hour_ago, latest))
+    hour_range = cursor.fetchone()
+    hour_high = hour_range['high'] or 0
+    hour_low = hour_range['low'] or 0
+
+    cursor.execute("""
+        WITH totals AS (
+            SELECT SUM(provider_count) as total
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low FROM totals
+    """, (day_ago, latest))
+    day_range = cursor.fetchone()
+    day_high = day_range['high'] or 0
+    day_low = day_range['low'] or 0
+
+    cursor.execute("""
+        WITH totals AS (
+            SELECT SUM(provider_count) as total
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low FROM totals
+    """, (week_ago, latest))
+    week_range = cursor.fetchone()
+    week_high = week_range['high'] or 0
+    week_low = week_range['low'] or 0
+
+    cursor.execute("""
+        WITH totals AS (
+            SELECT SUM(provider_count) as total
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low FROM totals
+    """, (two_week_ago, latest))
+    two_week_range = cursor.fetchone()
+    two_week_high = two_week_range['high'] or 0
+    two_week_low = two_week_range['low'] or 0
+
+    cursor.execute("""
+        WITH totals AS (
+            SELECT SUM(provider_count) as total
+            FROM provider_counts
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+        )
+        SELECT MAX(total) as high, MIN(total) as low FROM totals
+    """, (month_ago, latest))
+    month_range = cursor.fetchone()
+    month_high = month_range['high'] or 0
+    month_low = month_range['low'] or 0
+
+    # All-time high
+    cursor.execute("""
+        WITH totals AS (
+            SELECT timestamp, SUM(provider_count) as total
+            FROM provider_counts GROUP BY timestamp
+        )
+        SELECT timestamp, total FROM totals ORDER BY total DESC LIMIT 1
+    """)
+    ath_row = cursor.fetchone()
+    ath_value = ath_row['total'] if ath_row else current_total
+    ath_timestamp = ath_row['timestamp'] if ath_row else latest
+
+    # All-time low
+    cursor.execute("""
+        WITH totals AS (
+            SELECT timestamp, SUM(provider_count) as total
+            FROM provider_counts GROUP BY timestamp
+        )
+        SELECT timestamp, total FROM totals ORDER BY total ASC LIMIT 1
+    """)
+    atl_row = cursor.fetchone()
+    atl_value = atl_row['total'] if atl_row else current_total
+    atl_timestamp = atl_row['timestamp'] if atl_row else latest
+
     conn.close()
     return jsonify({
         'timestamp': latest,
         'total': current_total,
         'hour_delta': hour_delta,
         'day_delta': day_delta,
-        'top_10': top_10
+        'week_delta': week_delta,
+        'top_10': top_10,
+        'hour_range': [hour_low, hour_high],
+        'day_range': [day_low, day_high],
+        'week_range': [week_low, week_high],
+        'two_week_range': [two_week_low, two_week_high],
+        'month_range': [month_low, month_high],
+        'ath': {'value': ath_value, 'timestamp': ath_timestamp},
+        'atl': {'value': atl_value, 'timestamp': atl_timestamp},
     })
 
 @app.route('/api/network_total')
@@ -194,32 +307,48 @@ def api_anomalies():
     latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
     hour_ago = (datetime.fromisoformat(latest) - timedelta(hours=1)).isoformat(sep=' ')
 
+    # Get current data
     cursor.execute("""
-        WITH current AS (
-            SELECT country_code, country_name, provider_count
-            FROM provider_counts WHERE timestamp = ?
-        ),
-        past AS (
-            SELECT country_code, provider_count
-            FROM provider_counts
-            WHERE timestamp = (
-                SELECT MAX(timestamp) FROM provider_counts WHERE timestamp <= ?
-            )
-        )
-        SELECT c.country_name, c.country_code, c.provider_count,
-               COALESCE(c.provider_count - p.provider_count, 0) as delta,
-               CASE WHEN p.provider_count > 0
-                    THEN CAST(c.provider_count - p.provider_count AS FLOAT) / p.provider_count * 100
-                    ELSE 0 END as pct_change
-        FROM current c
-        LEFT JOIN past p ON c.country_code = p.country_code
-        WHERE ABS(CAST(c.provider_count - p.provider_count AS FLOAT) / NULLIF(p.provider_count, 0)) > ?
-        ORDER BY ABS(pct_change) DESC
-    """, (latest, hour_ago, threshold))
+        SELECT country_code, country_name, provider_count
+        FROM provider_counts WHERE timestamp = ?
+        ORDER BY provider_count DESC
+    """, (latest,))
+    current_rows = [dict(row) for row in cursor.fetchall()]
 
-    anomalies = [dict(row) for row in cursor.fetchall()]
+    all_anomalies = []
+    for current in current_rows:
+        # Get each country's historical data (most recent at or before hour_ago)
+        cursor.execute("""
+            SELECT provider_count FROM provider_counts
+            WHERE country_code = ? AND timestamp <= ?
+            ORDER BY timestamp DESC LIMIT 1
+        """, (current['country_code'], hour_ago))
+        past_row = cursor.fetchone()
+
+        if past_row and past_row[0] > 0:
+            past_count = past_row[0]
+            delta = current['provider_count'] - past_count
+            pct_change = (delta / past_count) * 100
+
+            if abs(pct_change) > threshold_pct:
+                all_anomalies.append({
+                    'country_code': current['country_code'],
+                    'country_name': current['country_name'],
+                    'provider_count': current['provider_count'],
+                    'delta': delta,
+                    'pct_change': pct_change
+                })
+
     conn.close()
-    return jsonify({'anomalies': anomalies, 'threshold': threshold})
+
+    gains = [a for a in all_anomalies if a['pct_change'] > 0]
+    losses = [a for a in all_anomalies if a['pct_change'] < 0]
+
+    gains.sort(key=lambda x: abs(x['pct_change']), reverse=True)
+    losses.sort(key=lambda x: abs(x['pct_change']), reverse=True)
+
+    anomalies = gains + losses
+    return jsonify({'anomalies': anomalies, 'threshold': threshold_pct})
 
 @app.route('/api/growth-projection')
 def api_growth_projection():
@@ -546,6 +675,7 @@ DASHBOARD_HTML = '''
         .stat-delta { font-size: 14px; margin-top: 8px; color: #60a5fa; }
         .delta-positive { color: #4ade80; }
         .delta-negative { color: #f87171; }
+        .inline-delta { font-size: 13px; margin-top: 4px; color: #e0e6ed; }
         .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 30px; }
         .chart-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; }
         .chart-card h3 { margin-bottom: 15px; color: #a0aec0; font-size: 14px; text-transform: uppercase; }
@@ -590,6 +720,10 @@ DASHBOARD_HTML = '''
                 <div class="stat-value" id="total">-</div>
                 <div class="stat-label">Total Network Providers</div>
                 <div class="stat-delta"><span id="day-delta">-</span> (24h)</div>
+                <div style="margin-top:10px; padding-top:10px; border-top:1px solid #2d3748;">
+                    <div style="font-size:11px; color:#f59e0b;">▲ ATH &nbsp;<span id="ath-value" style="font-weight:600;">-</span> <span id="ath-date" style="color:#6b7280; font-size:10px;"></span></div>
+                    <div style="font-size:11px; color:#f87171; margin-top:3px;">▼ ATL &nbsp;<span id="atl-value" style="font-weight:600;">-</span> <span id="atl-date" style="color:#6b7280; font-size:10px;"></span></div>
+                </div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="top-country">-</div>
@@ -599,6 +733,10 @@ DASHBOARD_HTML = '''
             <div class="stat-card">
                 <div class="stat-value" id="hour-delta">-</div>
                 <div class="stat-label">Change (1h)</div>
+                <div style="margin-top: 8px;">
+                    <div class="inline-delta">24h: <span id="day-delta-inline">-</span></div>
+                    <div class="inline-delta">7d: <span id="week-delta-inline">-</span></div>
+                </div>
                 <div class="last-update">Refreshing in <span id="refresh-timer">5m</span></div>
             </div>
             <div class="stat-card">
@@ -607,7 +745,7 @@ DASHBOARD_HTML = '''
                 <div class="stat-delta">→ <span id="projected-30d">-</span> in 30d</div>
             </div>
         </div>
-        
+
         <div class="charts">
             <div class="chart-card">
                 <h3>Network Total Over Time</h3>
@@ -752,13 +890,52 @@ DASHBOARD_HTML = '''
             const dayDelta = summary.day_delta;
             document.getElementById('day-delta').textContent = (dayDelta >= 0 ? '+' : '') + dayDelta.toLocaleString();
             document.getElementById('day-delta').className = dayDelta >= 0 ? 'delta-positive' : 'delta-negative';
+            document.getElementById('day-delta-inline').textContent = (dayDelta >= 0 ? '+' : '') + dayDelta.toLocaleString();
+            document.getElementById('day-delta-inline').className = dayDelta >= 0 ? 'delta-positive' : 'delta-negative';
 
             const hourDelta = summary.hour_delta;
             document.getElementById('hour-delta').textContent = (hourDelta >= 0 ? '+' : '') + hourDelta.toLocaleString();
             document.getElementById('hour-delta').className = hourDelta >= 0 ? 'delta-positive' : 'delta-negative';
 
-            // Network total chart with MA
+            const weekDelta = summary.week_delta;
+            document.getElementById('week-delta-inline').textContent = (weekDelta >= 0 ? '+' : '') + weekDelta.toLocaleString();
+            document.getElementById('week-delta-inline').className = weekDelta >= 0 ? 'delta-positive' : 'delta-negative';
+
+            // ATH / ATL badges
+            if (summary.ath) {
+                document.getElementById('ath-value').textContent = summary.ath.value.toLocaleString();
+                const athDate = new Date(summary.ath.timestamp);
+                document.getElementById('ath-date').textContent = athDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'});
+            }
+            if (summary.atl) {
+                document.getElementById('atl-value').textContent = summary.atl.value.toLocaleString();
+                const atlDate = new Date(summary.atl.timestamp);
+                document.getElementById('atl-date').textContent = atlDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'});
+            }
+
+            // Network total chart with MA + ATH/ATL reference lines
             if (totalChart) totalChart.destroy();
+            const n = networkTotal.length;
+            const athDataset = summary.ath ? [{
+                label: `ATH ${summary.ath.value.toLocaleString()}`,
+                data: Array(n).fill(summary.ath.value),
+                borderColor: 'rgba(245, 158, 11, 0.5)',
+                borderDash: [4, 4],
+                borderWidth: 1,
+                pointRadius: 0,
+                fill: false,
+                order: 10
+            }] : [];
+            const atlDataset = summary.atl ? [{
+                label: `ATL ${summary.atl.value.toLocaleString()}`,
+                data: Array(n).fill(summary.atl.value),
+                borderColor: 'rgba(248, 113, 113, 0.45)',
+                borderDash: [4, 4],
+                borderWidth: 1,
+                pointRadius: 0,
+                fill: false,
+                order: 10
+            }] : [];
             totalChart = new Chart(document.getElementById('totalChart'), {
                 type: 'line',
                 data: {
@@ -783,12 +960,12 @@ DASHBOARD_HTML = '''
                         borderWidth: 1,
                         pointRadius: 0,
                         fill: false
-                    }]
+                    }, ...athDataset, ...atlDataset]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: true, labels: { color: '#9ca3af' } }, filler: { propagate: true } },
+                    plugins: { legend: { display: true, labels: { color: '#9ca3af', filter: item => item.text !== '' } }, filler: { propagate: true } },
                     scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af', maxTicksLimit: 12 }, grid: { display: false } } }
                 }
             });
