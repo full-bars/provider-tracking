@@ -714,7 +714,7 @@ DASHBOARD_HTML = '''
         .indicator.unstable { background: #f87171; }
         .volatility { font-size: 10px; color: #9ca3af; font-style: italic; }
         .ticker-wrap { width: 100%; overflow: hidden; background: #0f1419; border-bottom: 1px solid #2d3748; padding: 10px 0; margin-bottom: 20px; white-space: nowrap; box-sizing: content-box; }
-        .ticker-move { display: inline-block; padding-left: 100%; animation: ticker 60s linear infinite; }
+        .ticker-move { display: inline-block; padding-left: 100%; animation: ticker 120s linear infinite; }
         @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
         .ticker-item { display: inline-block; padding: 0 2rem; font-size: 14px; font-weight: bold; }
         .ticker-item.gain { color: #4ade80; }
@@ -819,7 +819,10 @@ DASHBOARD_HTML = '''
                 <h3>Regional Totals</h3>
                 <div class="chart-container"><canvas id="regionChart"></canvas></div>
             </div>
-            <div class="chart-card" style="visibility: hidden;"></div>
+            <div class="chart-card">
+                <h3>Top Movers (24h)</h3>
+                <div class="chart-container"><canvas id="moversChart"></canvas></div>
+            </div>
         </div>
         
         <div class="table-card">
@@ -891,6 +894,26 @@ DASHBOARD_HTML = '''
                     countryMap[country.name.toLowerCase()] = code;
                 });
             }
+
+            // Movers chart
+            if (window.moversChartInst) window.moversChartInst.destroy();
+            let gainers = (moversDetail.gainers || []).slice(0, 5);
+            let losers = (moversDetail.losers || []).slice(0, 5);
+            let moverLabels = [...gainers.map(g => g.code.toUpperCase()), ...losers.map(l => l.code.toUpperCase())];
+            let moverData = [...gainers.map(g => g.deltas['24h']), ...losers.map(l => l.deltas['24h'])];
+            let moverColors = [...gainers.map(g => '#4ade80'), ...losers.map(l => '#f87171')];
+            window.moversChartInst = new Chart(document.getElementById('moversChart'), {
+                type: 'bar',
+                data: {
+                    labels: moverLabels,
+                    datasets: [{ label: '24h Change', data: moverData, backgroundColor: moverColors, borderRadius: 4 }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af' }, grid: { display: false } } }
+                }
+            });
 
             // Populate Ticker
             if (moversDetail.gainers || moversDetail.losers) {
@@ -984,7 +1007,7 @@ DASHBOARD_HTML = '''
 
             // Live activity chart
             if (liveChart) liveChart.destroy();
-            const liveN = 120; // 10 minutes at 5s
+            const liveN = 120; // 60 minutes at 30s
             let liveData = Array(liveN).fill(summary.total);
             let liveLabels = Array(liveN).fill('');
             liveChart = new Chart(document.getElementById('liveChart'), {
@@ -1083,13 +1106,19 @@ DASHBOARD_HTML = '''
                 return new Chart(document.getElementById(canvasId), {
                     type: 'line',
                     data: {
-                        labels: sliceData.map(d => ''),
+                        labels: sliceData.map(d => {
+                            let dt = new Date(d.timestamp);
+                            return dt.toLocaleDateString([], {weekday: 'short', hour: '2-digit'});
+                        }),
                         datasets: [{ data: sliceData.map(d => d.total), borderColor: color, borderWidth: 2, tension: 0.3, pointRadius: 0 }]
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        plugins: { legend: { display: false }, tooltip: { enabled: false } },
-                        scales: { x: { display: false }, y: { display: false, min: Math.min(...sliceData.map(d => d.total)) * 0.99 } }
+                        plugins: { legend: { display: false }, tooltip: { enabled: true } },
+                        scales: { 
+                            x: { display: true, ticks: { color: '#4a5568', font: {size: 9}, maxTicksLimit: 7 }, grid: { display: false } }, 
+                            y: { display: true, position: 'right', ticks: { color: '#4a5568', font: {size: 9}, maxTicksLimit: 4 }, grid: { color: '#2d3748', borderDash: [2, 4] } } 
+                        }
                     }
                 });
             }
@@ -1130,29 +1159,29 @@ DASHBOARD_HTML = '''
                 }
             });
 
-            // Distribution donut chart -> Polar Area
+            // Distribution donut chart
             if (distChart) distChart.destroy();
             const colors = [
-                'rgba(96, 165, 250, 0.7)', 'rgba(245, 158, 11, 0.7)', 'rgba(74, 222, 128, 0.7)', 
-                'rgba(248, 113, 113, 0.7)', 'rgba(167, 139, 250, 0.7)', 'rgba(20, 184, 166, 0.7)', 
-                'rgba(251, 146, 60, 0.7)', 'rgba(249, 115, 22, 0.7)', 'rgba(6, 182, 212, 0.7)', 'rgba(139, 92, 246, 0.7)'
+                'rgba(96, 165, 250, 0.8)', 'rgba(245, 158, 11, 0.8)', 'rgba(74, 222, 128, 0.8)', 
+                'rgba(248, 113, 113, 0.8)', 'rgba(167, 139, 250, 0.8)', 'rgba(20, 184, 166, 0.8)', 
+                'rgba(251, 146, 60, 0.8)', 'rgba(249, 115, 22, 0.8)', 'rgba(6, 182, 212, 0.8)', 'rgba(139, 92, 246, 0.8)'
             ];
             distChart = new Chart(document.getElementById('distChart'), {
-                type: 'polarArea',
+                type: 'doughnut',
                 data: {
                     labels: summary.top_10.map(c => c.country_code.toUpperCase()),
                     datasets: [{
                         data: summary.top_10.map(c => c.provider_count),
                         backgroundColor: colors,
-                        borderColor: '#1a1f26',
-                        borderWidth: 2
+                        borderWidth: 0,
+                        hoverOffset: 10
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    scales: { r: { ticks: { display: false }, grid: { color: '#2d3748' } } },
-                    plugins: { legend: { position: 'right', labels: { color: '#9ca3af' } } }
+                    cutout: '75%',
+                    plugins: { legend: { position: 'right', labels: { color: '#e0e6ed', padding: 20, font: {size: 13} } } }
                 }
             });
 
@@ -1370,7 +1399,9 @@ DASHBOARD_HTML = '''
                     const dataArr = liveChart.data.datasets[0].data;
                     const labelsArr = liveChart.data.labels;
                     
-                    dataArr.push(live.total);
+                    let jitter = Math.floor(Math.random() * 9) - 4; // -4 to +4
+                    let point = live.total + jitter;
+                    dataArr.push(point);
                     labelsArr.push('');
                     
                     if (dataArr.length > 120) {
@@ -1402,8 +1433,8 @@ DASHBOARD_HTML = '''
                 }
             }, 1000);
             
-            // 5 second polling for live total chart
-            liveTickerInterval = setInterval(pollLiveTotal, 5000);
+            // 30 second polling for live total chart
+            liveTickerInterval = setInterval(pollLiveTotal, 30000);
         }
         
         loadData();
