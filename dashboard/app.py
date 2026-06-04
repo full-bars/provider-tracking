@@ -714,7 +714,7 @@ DASHBOARD_HTML = '''
         .indicator.unstable { background: #f87171; }
         .volatility { font-size: 10px; color: #9ca3af; font-style: italic; }
         .ticker-wrap { width: 100%; overflow: hidden; background: #0f1419; border-bottom: 1px solid #2d3748; padding: 10px 0; margin-bottom: 20px; white-space: nowrap; box-sizing: content-box; }
-        .ticker-move { display: inline-block; padding-left: 100%; animation: ticker 30s linear infinite; }
+        .ticker-move { display: inline-block; padding-left: 100%; animation: ticker 60s linear infinite; }
         @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
         .ticker-item { display: inline-block; padding: 0 2rem; font-size: 14px; font-weight: bold; }
         .ticker-item.gain { color: #4ade80; }
@@ -743,8 +743,13 @@ DASHBOARD_HTML = '''
         </div>
 
         <div class="hero-chart-card">
-            <h3><span>Network Total Over Time</span> <span class="live-badge">🔴 LIVE</span></h3>
-            <div class="chart-container" style="height: 400px;"><canvas id="totalChart"></canvas></div>
+            <h3><span>Live Network Activity</span> <span class="live-badge">🔴 LIVE</span></h3>
+            <div class="chart-container" style="height: 200px;"><canvas id="liveChart"></canvas></div>
+        </div>
+
+        <div class="hero-chart-card">
+            <h3><span>Network Total Over Time (Hourly)</span></h3>
+            <div class="chart-container" style="height: 350px;"><canvas id="totalChart"></canvas></div>
         </div>
 
         <h3 style="color: #a0aec0; font-size: 14px; text-transform: uppercase; margin-bottom: 15px;">Monthly Breakdown (Week by Week)</h3>
@@ -868,7 +873,7 @@ DASHBOARD_HTML = '''
     </div>
     
     <script>
-        let totalChart, top25Chart, distChart, regionChart, countryChart;
+        let totalChart, liveChart, top25Chart, distChart, regionChart, countryChart;
         let week1Chart, week2Chart, week3Chart, week4Chart;
         let refreshInterval, liveTickerInterval;
         let countryMap = {}; // Maps country names and codes to codes
@@ -977,6 +982,33 @@ DASHBOARD_HTML = '''
                 document.getElementById('atl-date').textContent = atlDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'});
             }
 
+            // Live activity chart
+            if (liveChart) liveChart.destroy();
+            const liveN = 120; // 10 minutes at 5s
+            let liveData = Array(liveN).fill(summary.total);
+            let liveLabels = Array(liveN).fill('');
+            liveChart = new Chart(document.getElementById('liveChart'), {
+                type: 'line',
+                data: {
+                    labels: liveLabels,
+                    datasets: [{
+                        label: 'Live Total',
+                        data: liveData,
+                        borderColor: '#4ade80',
+                        backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: { duration: 2000, easing: 'linear' },
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    scales: { y: { min: summary.total * 0.999, max: summary.total * 1.001, ticks: { display: false }, grid: { display: false } }, x: { display: false } }
+                }
+            });
+
             // Network total chart with MA + ATH/ATL reference lines
             if (totalChart) totalChart.destroy();
             const totalLabels = networkTotal.map(d => {
@@ -1045,10 +1077,10 @@ DASHBOARD_HTML = '''
             });
 
             // Mini weekly charts
-            function drawMiniChart(id, title, sliceData, color) {
-                if (window[id]) window[id].destroy();
-                if (!sliceData || sliceData.length === 0) return;
-                window[id] = new Chart(document.getElementById(id), {
+            function drawMiniChart(chartVar, canvasId, sliceData, color) {
+                if (chartVar) chartVar.destroy();
+                if (!sliceData || sliceData.length === 0) return null;
+                return new Chart(document.getElementById(canvasId), {
                     type: 'line',
                     data: {
                         labels: sliceData.map(d => ''),
@@ -1061,10 +1093,10 @@ DASHBOARD_HTML = '''
                     }
                 });
             }
-            drawMiniChart('week1Chart', 'Week 1', networkTotal.slice(-168), '#4ade80');
-            drawMiniChart('week2Chart', 'Week 2', networkTotal.slice(-336, -168), '#60a5fa');
-            drawMiniChart('week3Chart', 'Week 3', networkTotal.slice(-504, -336), '#facc15');
-            drawMiniChart('week4Chart', 'Week 4', networkTotal.slice(-672, -504), '#f87171');
+            week1Chart = drawMiniChart(week1Chart, 'week1Chart', networkTotal.slice(-168), '#4ade80');
+            week2Chart = drawMiniChart(week2Chart, 'week2Chart', networkTotal.slice(-336, -168), '#60a5fa');
+            week3Chart = drawMiniChart(week3Chart, 'week3Chart', networkTotal.slice(-504, -336), '#facc15');
+            week4Chart = drawMiniChart(week4Chart, 'week4Chart', networkTotal.slice(-672, -504), '#f87171');
 
             // Top 10 bar chart
             if (top25Chart) top25Chart.destroy();
@@ -1334,40 +1366,25 @@ DASHBOARD_HTML = '''
         async function pollLiveTotal() {
             try {
                 const live = await fetch('/api/live_total').then(r => r.json());
-                if (totalChart && totalChart.data.datasets[0].data.length > 0) {
-                    const dataArr = totalChart.data.datasets[0].data;
-                    const labelsArr = totalChart.data.labels;
+                if (liveChart) {
+                    const dataArr = liveChart.data.datasets[0].data;
+                    const labelsArr = liveChart.data.labels;
                     
-                    // Always add a new point every 5s, replicating the last known value, unless the DB gives a new one.
-                    // To keep it simple, we just append the fetched 'total' at the current local time.
-                    const now = new Date();
-                    const h = now.getHours() % 12 || 12;
-                    const min = now.getMinutes().toString().padStart(2, '0');
-                    const sec = now.getSeconds().toString().padStart(2, '0');
-                    const short = `${h}:${min}:${sec}`;
-                    
-                    // Push new data, shift old
-                    labelsArr.push(short);
                     dataArr.push(live.total);
+                    labelsArr.push('');
                     
-                    // Ensure ATH/ATL arrays also grow
-                    if (totalChart.data.datasets[2]) totalChart.data.datasets[2].data.push(totalChart.data.datasets[2].data[0]);
-                    if (totalChart.data.datasets[3]) totalChart.data.datasets[3].data.push(totalChart.data.datasets[3].data[0]);
-                    
-                    // Keep MA dataset aligned (just duplicate the last MA value for the live scroll)
-                    const maData = totalChart.data.datasets[1].data;
-                    maData.push(maData[maData.length - 1]);
-                    
-                    // Limit total points to keep memory sane
-                    if (labelsArr.length > 720) {
-                        labelsArr.shift();
+                    if (dataArr.length > 120) {
                         dataArr.shift();
-                        maData.shift();
-                        if (totalChart.data.datasets[2]) totalChart.data.datasets[2].data.shift();
-                        if (totalChart.data.datasets[3]) totalChart.data.datasets[3].data.shift();
+                        labelsArr.shift();
                     }
                     
-                    totalChart.update('none'); // Update without full animation for smooth streaming
+                    // Adjust y-axis bounds dynamically
+                    const minVal = Math.min(...dataArr);
+                    const maxVal = Math.max(...dataArr);
+                    liveChart.options.scales.y.min = minVal === maxVal ? minVal * 0.999 : minVal * 0.999;
+                    liveChart.options.scales.y.max = minVal === maxVal ? maxVal * 1.001 : maxVal * 1.001;
+                    
+                    liveChart.update();
                 }
             } catch (e) {}
         }
