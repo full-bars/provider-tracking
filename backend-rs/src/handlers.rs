@@ -5,6 +5,28 @@ use std::collections::HashMap;
 
 use crate::{AppState, models::*, db, regions};
 
+pub async fn api_live_total(data: web::Data<AppState>) -> actix_web::Result<HttpResponse> {
+    let pool = &data.pool;
+    
+    #[derive(sqlx::FromRow)]
+    struct Record {
+        timestamp: String,
+        total: Option<i32>,
+    }
+    
+    let result = sqlx::query_as::<_, Record>(
+        "SELECT timestamp, SUM(provider_count) as total FROM provider_counts GROUP BY timestamp ORDER BY timestamp DESC LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await.map_err(actix_web::error::ErrorInternalServerError)?
+    .unwrap_or(Record { timestamp: String::new(), total: Some(0) });
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "timestamp": result.timestamp,
+        "total": result.total.unwrap_or(0)
+    })))
+}
+
 pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
     let pool = &state.pool;
     let latest = match db::get_latest_timestamp(pool).await {

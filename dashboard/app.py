@@ -239,6 +239,15 @@ def api_network_total():
     conn.close()
     return jsonify(data)
 
+@app.route('/api/live_total')
+def api_live_total():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT timestamp, SUM(provider_count) FROM provider_counts GROUP BY timestamp ORDER BY timestamp DESC LIMIT 1")
+    row = cursor.fetchone()
+    conn.close()
+    return jsonify({'timestamp': row[0], 'total': row[1]})
+
 @app.route('/api/movers')
 def api_movers():
     conn = get_db()
@@ -704,16 +713,59 @@ DASHBOARD_HTML = '''
         .indicator.warning { background: #facc15; }
         .indicator.unstable { background: #f87171; }
         .volatility { font-size: 10px; color: #9ca3af; font-style: italic; }
+        .ticker-wrap { width: 100%; overflow: hidden; background: #0f1419; border-bottom: 1px solid #2d3748; padding: 10px 0; margin-bottom: 20px; white-space: nowrap; box-sizing: content-box; }
+        .ticker-move { display: inline-block; padding-left: 100%; animation: ticker 30s linear infinite; }
+        @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
+        .ticker-item { display: inline-block; padding: 0 2rem; font-size: 14px; font-weight: bold; }
+        .ticker-item.gain { color: #4ade80; }
+        .ticker-item.loss { color: #f87171; }
+        .hero-chart-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .hero-chart-card h3 { margin-bottom: 15px; color: #a0aec0; font-size: 14px; text-transform: uppercase; display: flex; justify-content: space-between; }
+        .live-badge { color: #4ade80; animation: blink 2s infinite; font-weight: bold; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        .weekly-charts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+        .weekly-charts .chart-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 15px; }
+        .weekly-charts .chart-container { height: 120px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Provider Network Dashboard</h1>
 
+        <div class="ticker-wrap">
+            <div class="ticker-move" id="ticker-content">
+                <span style="color: #9ca3af; font-size: 14px;">Loading Live Ticker...</span>
+            </div>
+        </div>
+
         <div class="alert-banner" id="anomaly-alert">
             <strong>⚠️ Anomalies:</strong> <span id="anomaly-text" style="margin-left: 8px;"></span>
         </div>
 
+        <div class="hero-chart-card">
+            <h3><span>Network Total Over Time</span> <span class="live-badge">🔴 LIVE</span></h3>
+            <div class="chart-container" style="height: 400px;"><canvas id="totalChart"></canvas></div>
+        </div>
+
+        <h3 style="color: #a0aec0; font-size: 14px; text-transform: uppercase; margin-bottom: 15px;">Monthly Breakdown (Week by Week)</h3>
+        <div class="weekly-charts">
+            <div class="chart-card">
+                <h3 style="font-size: 12px;">Week 1 (Last 7 Days)</h3>
+                <div class="chart-container"><canvas id="week1Chart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3 style="font-size: 12px;">Week 2</h3>
+                <div class="chart-container"><canvas id="week2Chart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3 style="font-size: 12px;">Week 3</h3>
+                <div class="chart-container"><canvas id="week3Chart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3 style="font-size: 12px;">Week 4</h3>
+                <div class="chart-container"><canvas id="week4Chart"></canvas></div>
+            </div>
+        </div>
 
         <div class="header" id="header">
             <div class="stat-card">
@@ -748,24 +800,21 @@ DASHBOARD_HTML = '''
 
         <div class="charts">
             <div class="chart-card">
-                <h3>Network Total Over Time</h3>
-                <div class="chart-container"><canvas id="totalChart"></canvas></div>
-            </div>
-            <div class="chart-card">
                 <h3>Top 10 Countries</h3>
                 <div class="chart-container" style="height: 300px;"><canvas id="top25Chart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3>Provider Distribution</h3>
+                <div class="chart-container" style="height: 300px;"><canvas id="distChart"></canvas></div>
             </div>
         </div>
 
         <div class="charts">
             <div class="chart-card">
-                <h3>Provider Distribution</h3>
-                <div class="chart-container"><canvas id="distChart"></canvas></div>
-            </div>
-            <div class="chart-card">
                 <h3>Regional Totals</h3>
                 <div class="chart-container"><canvas id="regionChart"></canvas></div>
             </div>
+            <div class="chart-card" style="visibility: hidden;"></div>
         </div>
         
         <div class="table-card">
@@ -820,7 +869,8 @@ DASHBOARD_HTML = '''
     
     <script>
         let totalChart, top25Chart, distChart, regionChart, countryChart;
-        let refreshInterval;
+        let week1Chart, week2Chart, week3Chart, week4Chart;
+        let refreshInterval, liveTickerInterval;
         let countryMap = {}; // Maps country names and codes to codes
 
         async function loadData() {
@@ -835,6 +885,20 @@ DASHBOARD_HTML = '''
                     countryMap[code] = code;
                     countryMap[country.name.toLowerCase()] = code;
                 });
+            }
+
+            // Populate Ticker
+            if (moversDetail.gainers || moversDetail.losers) {
+                const tickerContent = document.getElementById('ticker-content');
+                let items = [];
+                (moversDetail.gainers || []).slice(0, 15).forEach(m => {
+                    if (m.deltas['1h'] > 0) items.push(`<span class="ticker-item gain">▲ ${m.code.toUpperCase()} +${m.deltas['1h']}</span>`);
+                });
+                (moversDetail.losers || []).slice(0, 15).forEach(m => {
+                    if (m.deltas['1h'] < 0) items.push(`<span class="ticker-item loss">▼ ${m.code.toUpperCase()} ${m.deltas['1h']}</span>`);
+                });
+                // Duplicate items to ensure smooth infinite scroll
+                if (tickerContent) tickerContent.innerHTML = items.join('') + items.join('');
             }
 
             // Add common country aliases
@@ -915,6 +979,14 @@ DASHBOARD_HTML = '''
 
             // Network total chart with MA + ATH/ATL reference lines
             if (totalChart) totalChart.destroy();
+            const totalLabels = networkTotal.map(d => {
+                const dt = new Date(d.timestamp);
+                const h = dt.getHours() % 12 || 12;
+                const min = dt.getMinutes().toString().padStart(2, '0');
+                const short = `${dt.getMonth()+1}/${dt.getDate()} ${h}:${min}`;
+                const full = `${dt.toLocaleDateString()} ${dt.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`;
+                return { short, full, timestamp: d.timestamp };
+            });
             const n = networkTotal.length;
             const athDataset = summary.ath ? [{
                 label: `ATH ${summary.ath.value.toLocaleString()}`,
@@ -939,19 +1011,16 @@ DASHBOARD_HTML = '''
             totalChart = new Chart(document.getElementById('totalChart'), {
                 type: 'line',
                 data: {
-                    labels: networkTotal.map(d => {
-                        const dt = new Date(d.timestamp);
-                        const h = dt.getHours() % 12 || 12;
-                        const min = dt.getMinutes().toString().padStart(2, '0');
-                        return `${dt.getMonth()+1}/${dt.getDate()} ${h}:${min}`;
-                    }),
+                    labels: totalLabels.map(l => l.short),
                     datasets: [{
                         label: 'Total Providers',
                         data: networkTotal.map(d => d.total),
                         borderColor: '#4ade80',
-                        backgroundColor: 'rgba(74, 222, 128, 0.05)',
+                        backgroundColor: 'rgba(74, 222, 128, 0.1)',
                         tension: 0.3,
-                        fill: true
+                        fill: true,
+                        pointRadius: 1,
+                        pointHoverRadius: 5
                     }, {
                         label: '24h MA',
                         data: networkTotal.map(d => d.ma),
@@ -965,10 +1034,37 @@ DASHBOARD_HTML = '''
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: true, labels: { color: '#9ca3af', filter: item => item.text !== '' } }, filler: { propagate: true } },
-                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af', maxTicksLimit: 12 }, grid: { display: false } } }
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: true, labels: { color: '#9ca3af', filter: item => item.text !== '' } },
+                        filler: { propagate: true },
+                        tooltip: { callbacks: { title: ctx => totalLabels[ctx[0].dataIndex]?.full } }
+                    },
+                    scales: { y: { ticks: { color: '#9ca3af' }, grid: { color: '#2d3748' } }, x: { ticks: { color: '#9ca3af', maxTicksLimit: 24 }, grid: { display: false } } }
                 }
             });
+
+            // Mini weekly charts
+            function drawMiniChart(id, title, sliceData, color) {
+                if (window[id]) window[id].destroy();
+                if (!sliceData || sliceData.length === 0) return;
+                window[id] = new Chart(document.getElementById(id), {
+                    type: 'line',
+                    data: {
+                        labels: sliceData.map(d => ''),
+                        datasets: [{ data: sliceData.map(d => d.total), borderColor: color, borderWidth: 2, tension: 0.3, pointRadius: 0 }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                        scales: { x: { display: false }, y: { display: false, min: Math.min(...sliceData.map(d => d.total)) * 0.99 } }
+                    }
+                });
+            }
+            drawMiniChart('week1Chart', 'Week 1', networkTotal.slice(-168), '#4ade80');
+            drawMiniChart('week2Chart', 'Week 2', networkTotal.slice(-336, -168), '#60a5fa');
+            drawMiniChart('week3Chart', 'Week 3', networkTotal.slice(-504, -336), '#facc15');
+            drawMiniChart('week4Chart', 'Week 4', networkTotal.slice(-672, -504), '#f87171');
 
             // Top 10 bar chart
             if (top25Chart) top25Chart.destroy();
@@ -1002,22 +1098,29 @@ DASHBOARD_HTML = '''
                 }
             });
 
-            // Distribution donut chart (top 10)
+            // Distribution donut chart -> Polar Area
             if (distChart) distChart.destroy();
-            const colors = ['#60a5fa', '#f59e0b', '#4ade80', '#f87171', '#a78bfa', '#14b8a6', '#fb923c', '#f97316', '#06b6d4', '#8b5cf6'];
+            const colors = [
+                'rgba(96, 165, 250, 0.7)', 'rgba(245, 158, 11, 0.7)', 'rgba(74, 222, 128, 0.7)', 
+                'rgba(248, 113, 113, 0.7)', 'rgba(167, 139, 250, 0.7)', 'rgba(20, 184, 166, 0.7)', 
+                'rgba(251, 146, 60, 0.7)', 'rgba(249, 115, 22, 0.7)', 'rgba(6, 182, 212, 0.7)', 'rgba(139, 92, 246, 0.7)'
+            ];
             distChart = new Chart(document.getElementById('distChart'), {
-                type: 'doughnut',
+                type: 'polarArea',
                 data: {
                     labels: summary.top_10.map(c => c.country_code.toUpperCase()),
                     datasets: [{
                         data: summary.top_10.map(c => c.provider_count),
-                        backgroundColor: colors
+                        backgroundColor: colors,
+                        borderColor: '#1a1f26',
+                        borderWidth: 2
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { labels: { color: '#9ca3af' } } }
+                    scales: { r: { ticks: { display: false }, grid: { color: '#2d3748' } } },
+                    plugins: { legend: { position: 'right', labels: { color: '#9ca3af' } } }
                 }
             });
 
@@ -1228,6 +1331,47 @@ DASHBOARD_HTML = '''
 
         renderComparisonInputs();
 
+        async function pollLiveTotal() {
+            try {
+                const live = await fetch('/api/live_total').then(r => r.json());
+                if (totalChart && totalChart.data.datasets[0].data.length > 0) {
+                    const dataArr = totalChart.data.datasets[0].data;
+                    const labelsArr = totalChart.data.labels;
+                    
+                    // Always add a new point every 5s, replicating the last known value, unless the DB gives a new one.
+                    // To keep it simple, we just append the fetched 'total' at the current local time.
+                    const now = new Date();
+                    const h = now.getHours() % 12 || 12;
+                    const min = now.getMinutes().toString().padStart(2, '0');
+                    const sec = now.getSeconds().toString().padStart(2, '0');
+                    const short = `${h}:${min}:${sec}`;
+                    
+                    // Push new data, shift old
+                    labelsArr.push(short);
+                    dataArr.push(live.total);
+                    
+                    // Ensure ATH/ATL arrays also grow
+                    if (totalChart.data.datasets[2]) totalChart.data.datasets[2].data.push(totalChart.data.datasets[2].data[0]);
+                    if (totalChart.data.datasets[3]) totalChart.data.datasets[3].data.push(totalChart.data.datasets[3].data[0]);
+                    
+                    // Keep MA dataset aligned (just duplicate the last MA value for the live scroll)
+                    const maData = totalChart.data.datasets[1].data;
+                    maData.push(maData[maData.length - 1]);
+                    
+                    // Limit total points to keep memory sane
+                    if (labelsArr.length > 720) {
+                        labelsArr.shift();
+                        dataArr.shift();
+                        maData.shift();
+                        if (totalChart.data.datasets[2]) totalChart.data.datasets[2].data.shift();
+                        if (totalChart.data.datasets[3]) totalChart.data.datasets[3].data.shift();
+                    }
+                    
+                    totalChart.update('none'); // Update without full animation for smooth streaming
+                }
+            } catch (e) {}
+        }
+
         function startRefreshTimer() {
             let seconds = 300;
             refreshInterval = setInterval(() => {
@@ -1240,6 +1384,9 @@ DASHBOARD_HTML = '''
                     seconds = 300;
                 }
             }, 1000);
+            
+            // 5 second polling for live total chart
+            liveTickerInterval = setInterval(pollLiveTotal, 5000);
         }
         
         loadData();
