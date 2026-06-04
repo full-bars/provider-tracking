@@ -45,10 +45,13 @@
         .indicator.warning { background: #facc15; }
         .indicator.unstable { background: #f87171; }
         .volatility { font-size: 10px; color: #9ca3af; font-style: italic; }
-        .ticker-wrap { width: 100%; overflow: hidden; background: #0f1419; border-bottom: 1px solid #2d3748; padding: 10px 0; margin-bottom: 20px; white-space: nowrap; box-sizing: content-box; }
+        .ticker-wrap { width: 100%; overflow: hidden; background: #0f1419; border-bottom: 1px solid #2d3748; padding: 10px 0; margin-bottom: 5px; white-space: nowrap; box-sizing: content-box; display: flex; align-items: center; }
+        .ticker-wrap:hover .ticker-move { animation-play-state: paused; }
         .ticker-move { display: inline-block; padding-left: 100%; animation: ticker 120s linear infinite; }
         @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
-        .ticker-item { display: inline-block; padding: 0 2rem; font-size: 14px; font-weight: bold; }
+        .ticker-item { display: inline-block; padding: 0 2rem; font-size: 14px; font-weight: bold; cursor: default; }
+        .ticker-item:hover .ticker-full-name { display: inline; color: #e0e6ed; }
+        .ticker-full-name { display: none; margin-left: 4px; font-weight: normal; font-size: 13px; color: #a0aec0; background: #2d3748; padding: 2px 6px; border-radius: 4px; }
         .ticker-item.gain { color: #4ade80; }
         .ticker-item.loss { color: #f87171; }
         .hero-chart-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
@@ -64,9 +67,14 @@
     <div class="container">
         <h1>Provider Network Dashboard</h1>
 
-        <div class="ticker-wrap">
-            <div class="ticker-move" id="ticker-content">
-                <span style="color: #9ca3af; font-size: 14px;">Loading Live Ticker...</span>
+        <div class="ticker-wrap" style="border-bottom: none; margin-bottom: 0;">
+            <div class="ticker-move" id="ticker-hourly">
+                <span style="color: #9ca3af; font-size: 14px;">Loading Hourly Ticker...</span>
+            </div>
+        </div>
+        <div class="ticker-wrap" style="margin-bottom: 20px; background: #151a21;">
+            <div class="ticker-move" id="ticker-daily" style="animation-duration: 150s;">
+                <span style="color: #9ca3af; font-size: 14px;">Loading Daily Ticker...</span>
             </div>
         </div>
 
@@ -75,13 +83,8 @@
         </div>
 
         <div class="hero-chart-card">
-            <h3><span>Live Network Activity</span> <span class="live-badge">🔴 LIVE</span></h3>
-            <div class="chart-container" style="height: 200px;"><canvas id="liveChart"></canvas></div>
-        </div>
-
-        <div class="hero-chart-card">
-            <h3><span>Network Total Over Time (Hourly)</span></h3>
-            <div class="chart-container" style="height: 350px;"><canvas id="totalChart"></canvas></div>
+            <h3><span>Network Total Over Time</span></h3>
+            <div class="chart-container" style="height: 600px;"><canvas id="totalChart"></canvas></div>
         </div>
 
         <h3 style="color: #a0aec0; font-size: 14px; text-transform: uppercase; margin-bottom: 15px;">Monthly Breakdown (Week by Week)</h3>
@@ -118,6 +121,9 @@
                 <div class="stat-value" id="top-country">-</div>
                 <div class="stat-label">Largest Country</div>
                 <div class="stat-delta" id="top-country-code">-</div>
+                <div style="margin-top: 10px; font-size: 11px; color: #a0aec0; border-top: 1px solid #2d3748; padding-top: 8px;">
+                    2nd: <span id="second-country-code" style="color: #e0e6ed;">-</span> (<span id="second-country">-</span>)
+                </div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="hour-delta">-</div>
@@ -132,6 +138,9 @@
                 <div class="stat-value" id="growth-rate">-</div>
                 <div class="stat-label">Daily Growth Rate</div>
                 <div class="stat-delta">→ <span id="projected-30d">-</span> in 30d</div>
+                <div style="margin-top: 10px; font-size: 11px; color: #a0aec0; border-top: 1px solid #2d3748; padding-top: 8px;">
+                    Weekly Growth Rate: <span id="weekly-growth-rate" style="color: #e0e6ed;">-</span>
+                </div>
             </div>
         </div>
 
@@ -222,9 +231,27 @@
             if (moversDetail.gainers) {
                 moversDetail.gainers.forEach(country => {
                     const code = country.code.toLowerCase();
-                    countryMap[code] = code;
-                    countryMap[country.name.toLowerCase()] = code;
+                    countryMap[code] = country.name;
                 });
+            }
+            
+            // Populate Tickers
+            function buildTickerHtml(gainers, losers, label, key) {
+                if (!gainers && !losers) return '';
+                let html = `<span style="color:#a0aec0; font-size:12px; font-weight:normal; margin-right:20px; text-transform:uppercase;">${label}</span> `;
+                let all = [];
+                (gainers || []).forEach(item => { if(item.deltas[key]) all.push({...item, d: item.deltas[key]}); });
+                (losers || []).forEach(item => { if(item.deltas[key]) all.push({...item, d: item.deltas[key]}); });
+                all.sort((a,b) => Math.abs(b.d) - Math.abs(a.d));
+                all.slice(0, 15).forEach(item => {
+                    if (item.d > 0) html += `<span class="ticker-item gain">${item.code.toUpperCase()} <span class="ticker-full-name">${item.name}</span> ▲${item.d}</span>`;
+                    else if (item.d < 0) html += `<span class="ticker-item loss">${item.code.toUpperCase()} <span class="ticker-full-name">${item.name}</span> ▼${Math.abs(item.d)}</span>`;
+                });
+                return html + html;
+            }
+            if (moversDetail.gainers || moversDetail.losers) {
+                document.getElementById('ticker-hourly').innerHTML = buildTickerHtml(moversDetail.gainers, moversDetail.losers, '1H Movers', '1h');
+                document.getElementById('ticker-daily').innerHTML = buildTickerHtml(moversDetail.gainers, moversDetail.losers, '24H Movers', '24h');
             }
 
             // Movers chart
@@ -247,45 +274,11 @@
                 }
             });
 
-            // Populate Ticker
-            if (moversDetail.gainers || moversDetail.losers) {
-                const tickerContent = document.getElementById('ticker-content');
-                let items = [];
-                (moversDetail.gainers || []).slice(0, 15).forEach(m => {
-                    if (m.deltas['1h'] > 0) items.push(`<span class="ticker-item gain">▲ ${m.code.toUpperCase()} +${m.deltas['1h']}</span>`);
-                });
-                (moversDetail.losers || []).slice(0, 15).forEach(m => {
-                    if (m.deltas['1h'] < 0) items.push(`<span class="ticker-item loss">▼ ${m.code.toUpperCase()} ${m.deltas['1h']}</span>`);
-                });
-                // Duplicate items to ensure smooth infinite scroll
-                if (tickerContent) tickerContent.innerHTML = items.join('') + items.join('');
-            }
-
-            // Add common country aliases
-            const aliases = {
-                'holland': 'nl', 'netherlands': 'nl',
-                'uk': 'gb', 'england': 'gb', 'scotland': 'gb', 'wales': 'gb',
-                'south korea': 'kr', 'korea': 'kr',
-                'china': 'cn', 'prc': 'cn',
-                'united states': 'us', 'usa': 'us', 'america': 'us',
-                'united kingdom': 'gb',
-                'hong kong': 'hk',
-                'new zealand': 'nz',
-                'south africa': 'za',
-                'united arab emirates': 'ae', 'emirates': 'ae', 'dubai': 'ae',
-                'czech republic': 'cz', 'czechia': 'cz',
-                'costa rica': 'cr',
-                'el salvador': 'sv',
-            };
-            for (const [alias, code] of Object.entries(aliases)) {
-                if (countryMap[code]) countryMap[alias] = code;
-            }
             const anomalies = await fetch('/api/anomalies?threshold=15').then(r => r.json()).catch(() => ({ anomalies: [] }));
             const growth = await fetch('/api/growth-projection').then(r => r.json()).catch(() => ({}));
             const regions = await fetch('/api/regions').then(r => r.json()).catch(() => ([]));
             const atRisk = await fetch('/api/at-risk').then(r => r.json()).catch(() => ({ disappeared: [], near_zero: [] }));
 
-            // Handle anomalies - show all with delta and percentage
             const anomalyBanner = document.getElementById('anomaly-alert');
             if (anomalies.anomalies && anomalies.anomalies.length > 0) {
                 const anomalyText = anomalies.anomalies.map(a => {
@@ -298,7 +291,6 @@
                 anomalyBanner.classList.remove('show');
             }
 
-            // Update growth projection
             if (growth.growth_rate !== undefined) {
                 const rate = growth.growth_rate;
                 document.getElementById('growth-rate').textContent = rate >= 0 ? `+${rate.toFixed(1)}%` : `${rate.toFixed(1)}%`;
@@ -306,10 +298,16 @@
                 document.getElementById('projected-30d').textContent = (growth.projected_30d || 0).toLocaleString();
             }
 
-            // Update stats
             document.getElementById('total').textContent = summary.total.toLocaleString();
-            document.getElementById('top-country').textContent = summary.top_10[0]?.provider_count.toLocaleString() || '-';
-            document.getElementById('top-country-code').textContent = summary.top_10[0]?.country_name || '-';
+            document.getElementById('top-country-code').textContent = summary.top_10[0].country_code.toUpperCase();
+            document.getElementById('top-country').textContent = summary.top_10[0].provider_count.toLocaleString();
+            if (summary.top_10.length > 1) {
+                document.getElementById('second-country-code').textContent = summary.top_10[1].country_code.toUpperCase();
+                document.getElementById('second-country').textContent = summary.top_10[1].provider_count.toLocaleString();
+            }
+            
+            let wkRate = summary.total - summary.week_delta > 0 ? (summary.week_delta / (summary.total - summary.week_delta) * 100).toFixed(2) : 0;
+            document.getElementById('weekly-growth-rate').textContent = (wkRate > 0 ? '+' : '') + wkRate + '%';
 
             const dayDelta = summary.day_delta;
             document.getElementById('day-delta').textContent = (dayDelta >= 0 ? '+' : '') + dayDelta.toLocaleString();
@@ -325,7 +323,6 @@
             document.getElementById('week-delta-inline').textContent = (weekDelta >= 0 ? '+' : '') + weekDelta.toLocaleString();
             document.getElementById('week-delta-inline').className = weekDelta >= 0 ? 'delta-positive' : 'delta-negative';
 
-            // ATH / ATL badges
             if (summary.ath) {
                 document.getElementById('ath-value').textContent = summary.ath.value.toLocaleString();
                 const athDate = new Date(summary.ath.timestamp);
@@ -337,34 +334,6 @@
                 document.getElementById('atl-date').textContent = atlDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'});
             }
 
-            // Live activity chart
-            if (liveChart) liveChart.destroy();
-            const liveN = 120; // 60 minutes at 30s
-            let liveData = Array(liveN).fill(summary.total);
-            let liveLabels = Array(liveN).fill('');
-            liveChart = new Chart(document.getElementById('liveChart'), {
-                type: 'line',
-                data: {
-                    labels: liveLabels,
-                    datasets: [{
-                        label: 'Live Total',
-                        data: liveData,
-                        borderColor: '#4ade80',
-                        backgroundColor: 'rgba(74, 222, 128, 0.1)',
-                        tension: 0.3,
-                        fill: true,
-                        pointRadius: 0
-                    }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    animation: { duration: 2000, easing: 'linear' },
-                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
-                    scales: { y: { min: summary.total * 0.999, max: summary.total * 1.001, ticks: { display: false }, grid: { display: false } }, x: { display: false } }
-                }
-            });
-
-            // Network total chart with MA + ATH/ATL reference lines
             if (totalChart) totalChart.destroy();
             const totalLabels = networkTotal.map(d => {
                 const dt = new Date(d.timestamp);
@@ -431,7 +400,6 @@
                 }
             });
 
-            // Mini weekly charts
             function drawMiniChart(chartVar, canvasId, sliceData, color) {
                 if (chartVar) chartVar.destroy();
                 if (!sliceData || sliceData.length === 0) return null;
@@ -459,7 +427,6 @@
             week3Chart = drawMiniChart(week3Chart, 'week3Chart', networkTotal.slice(-504, -336), '#facc15');
             week4Chart = drawMiniChart(week4Chart, 'week4Chart', networkTotal.slice(-672, -504), '#f87171');
 
-            // Top 10 bar chart
             if (top25Chart) top25Chart.destroy();
             top25Chart = new Chart(document.getElementById('top25Chart'), {
                 type: 'bar',
@@ -481,6 +448,7 @@
                             callbacks: {
                                 afterLabel: function(ctx) {
                                     const r = regions[ctx.dataIndex];
+                                    if (!r) return '';
                                     const sign = r.delta_24h >= 0 ? '+' : '';
                                     return `24h: ${sign}${r.delta_24h.toLocaleString()}`;
                                 }
@@ -491,7 +459,6 @@
                 }
             });
 
-            // Distribution donut chart
             if (distChart) distChart.destroy();
             const colors = [
                 'rgba(96, 165, 250, 0.8)', 'rgba(245, 158, 11, 0.8)', 'rgba(74, 222, 128, 0.8)', 
@@ -501,7 +468,7 @@
             distChart = new Chart(document.getElementById('distChart'), {
                 type: 'doughnut',
                 data: {
-                    labels: summary.top_10.map(c => c.country_code.toUpperCase()),
+                    labels: summary.top_10.map(c => c.country_name || c.country_code.toUpperCase()),
                     datasets: [{
                         data: summary.top_10.map(c => c.provider_count),
                         backgroundColor: colors,
@@ -517,7 +484,6 @@
                 }
             });
 
-            // Regional chart
             if (regionChart) regionChart.destroy();
             const regionColors = regions.map(r => r.delta_24h >= 0 ? '#4ade80' : '#f87171');
             regionChart = new Chart(document.getElementById('regionChart'), {
@@ -551,21 +517,12 @@
                 }
             });
 
-            // Populate at-risk lists
             document.getElementById('disappeared-list').innerHTML = atRisk.disappeared.length === 0 ? '<span style="color: #9ca3af;">None</span>' : atRisk.disappeared.map(c => `<div>${c.country_name} (had ${c.prev_count})</div>`).join('');
             document.getElementById('near-zero-list').innerHTML = atRisk.near_zero.length === 0 ? '<span style="color: #9ca3af;">None</span>' : atRisk.near_zero.map(c => {
                 const delta = c.delta_24h || 0;
                 return `<div>${c.country_name}: ${c.provider_count} (${delta >= 0 ? '+' : ''}${delta})</div>`;
             }).join('');
 
-            // Update default comparison to show top 5 countries by provider count
-            if (summary.top_10 && summary.top_10.length >= 5) {
-                comparisonCountries = summary.top_10.slice(0, 5).map(c => c.country_code.toLowerCase());
-                renderComparisonInputs();
-                await updateComparison(); // Redraw the comparison chart with new countries
-            }
-
-            // Gainers and losers tables
             updateDetailedMoversTable('gainers-table', moversDetail.gainers);
             updateDetailedMoversTable('losers-table', moversDetail.losers);
         }
@@ -631,20 +588,9 @@
         document.getElementById('add-comparison-btn').addEventListener('click', () => {
             comparisonCountries.push('');
             renderComparisonInputs();
-            // Focus on the newly added input (the one with empty value at the last index)
             const newIdx = comparisonCountries.length - 1;
             document.querySelector(`.comp-input[data-idx="${newIdx}"]`)?.focus();
         });
-
-        function resolveCountryCode(input) {
-            const lower = input.toLowerCase().trim();
-            // If it's already a valid code (2 chars), check if it's valid
-            if (lower.length === 2 && countryMap[lower]) return countryMap[lower];
-            // Try to find by country name
-            if (countryMap[lower]) return countryMap[lower];
-            // Return as-is if not found (for fuzzy matching or user error)
-            return lower;
-        }
 
         function renderComparisonInputs() {
             const container = document.getElementById('comparison-inputs');
@@ -652,7 +598,7 @@
                 const displayCode = code.length === 2 ? code : '';
                 return `
                 <div style="background: #1a1f26; border: 1px solid #2d3748; padding: 10px; border-radius: 4px; display: flex; gap: 5px; align-items: center;">
-                    <input type="text" class="comp-input" data-idx="${idx}" value="${displayCode}" placeholder="e.g., us or United States" maxlength="40" style="width: 140px;">
+                    <input type="text" class="comp-input" data-idx="${idx}" value="${displayCode}" placeholder="e.g., us" maxlength="40" style="width: 140px;">
                     <button class="remove-comp" data-idx="${idx}" style="background: #f87171; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 10px;">Remove</button>
                 </div>
             `;
@@ -660,10 +606,7 @@
 
             container.querySelectorAll('.comp-input').forEach(inp => {
                 inp.addEventListener('change', (e) => {
-                    const resolved = resolveCountryCode(e.target.value);
-                    comparisonCountries[parseInt(e.target.dataset.idx)] = resolved;
-                    // Update display to show the code
-                    if (resolved.length === 2) e.target.value = resolved;
+                    comparisonCountries[parseInt(e.target.dataset.idx)] = e.target.value.toLowerCase().trim();
                     updateComparison();
                 });
             });
@@ -707,9 +650,7 @@
                 data: {
                     labels: allTs.map(t => {
                         const d = new Date(t);
-                        const date = d.toLocaleDateString();
-                        const time = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-                        return `${date} ${time}`;
+                        return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`;
                     }),
                     datasets
                 },
@@ -724,34 +665,6 @@
 
         renderComparisonInputs();
 
-        async function pollLiveTotal() {
-            try {
-                const live = await fetch('/api/live_total').then(r => r.json());
-                if (liveChart) {
-                    const dataArr = liveChart.data.datasets[0].data;
-                    const labelsArr = liveChart.data.labels;
-                    
-                    let jitter = Math.floor(Math.random() * 9) - 4; // -4 to +4
-                    let point = live.total + jitter;
-                    dataArr.push(point);
-                    labelsArr.push('');
-                    
-                    if (dataArr.length > 120) {
-                        dataArr.shift();
-                        labelsArr.shift();
-                    }
-                    
-                    // Adjust y-axis bounds dynamically
-                    const minVal = Math.min(...dataArr);
-                    const maxVal = Math.max(...dataArr);
-                    liveChart.options.scales.y.min = minVal === maxVal ? minVal * 0.999 : minVal * 0.999;
-                    liveChart.options.scales.y.max = minVal === maxVal ? maxVal * 1.001 : maxVal * 1.001;
-                    
-                    liveChart.update();
-                }
-            } catch (e) {}
-        }
-
         function startRefreshTimer() {
             let seconds = 300;
             refreshInterval = setInterval(() => {
@@ -764,13 +677,10 @@
                     seconds = 300;
                 }
             }, 1000);
-            
-            // 30 second polling for live total chart
-            liveTickerInterval = setInterval(pollLiveTotal, 30000);
         }
         
         loadData();
-        updateComparison(); // Initialize default comparison chart
+        updateComparison();
         startRefreshTimer();
     </script>
 </body>
