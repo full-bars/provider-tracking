@@ -57,6 +57,7 @@ async fn main() -> Result<()> {
                         web::scope("/api")
                             .route("/summary", web::get().to(api_summary))
                             .route("/network_total", web::get().to(api_network_total))
+                            .route("/live_total", web::get().to(api_live_total))
                             .route("/regions", web::get().to(api_regions))
                             .route("/at-risk", web::get().to(api_at_risk))
                             .route("/anomalies", web::get().to(api_anomalies))
