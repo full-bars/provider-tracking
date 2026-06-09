@@ -386,32 +386,54 @@ pub async fn api_growth_projection(state: web::Data<AppState>) -> HttpResponse {
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
-    let current = match db::get_total_at_timestamp(pool, &latest).await {
-        Ok(Some(t)) => t,
-        Ok(None) => 0,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
-    };
+    let current = db::get_total_at_timestamp(pool, &latest).await.unwrap_or(None).unwrap_or(0);
+    let past_1d = db::get_total_at_timestamp(pool, &format_time_offset(&latest, -1440)).await.unwrap_or(None);
+    let past_3d = db::get_total_at_timestamp(pool, &format_time_offset(&latest, -4320)).await.unwrap_or(None);
+    let past_7d = db::get_total_at_timestamp(pool, &format_time_offset(&latest, -10080)).await.unwrap_or(None);
 
-    let day_ago = format_time_offset(&latest, -1440);
-    let past = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(None).unwrap_or(current);
-
-    let daily_growth = current - past;
-    let growth_rate = if past > 0 {
-        ((daily_growth as f64) / (past as f64)) * 100.0
+    let mut model = "weighted-exponential";
+    let (projected_30d, projected_90d, growth_rate, daily_growth) = if current == 0 || past_3d.is_none() || past_7d.is_none() || past_3d == Some(0) || past_7d == Some(0) {
+        // Fallback to linear 1-day logic
+        let p1 = past_1d.unwrap_or(current);
+        let dg = current - p1;
+        let gr = if p1 > 0 { ((dg as f64) / (p1 as f64)) * 100.0 } else { 0.0 };
+        model = "linear-1d-fallback";
+        (
+            (current as i32 + (dg * 30)) as i32,
+            (current as i32 + (dg * 90)) as i32,
+            gr,
+            dg
+        )
     } else {
-        0.0
+        let c = current as f64;
+        let p3 = past_3d.unwrap() as f64;
+        let p7 = past_7d.unwrap() as f64;
+        
+        // Calculate daily compounded growth rates for 3d and 7d horizons
+        let r3 = (c / p3).powf(1.0/3.0) - 1.0;
+        let r7 = (c / p7).powf(1.0/7.0) - 1.0;
+        
+        // Weighting: 70% to stable 7-day trend, 30% to recent 3-day momentum
+        let mut r_weighted = (0.7 * r7) + (0.3 * r3);
+        
+        // Cap r_weighted to +/- 5% daily to prevent astronomical projections from anomalies
+        r_weighted = r_weighted.max(-0.05).min(0.05);
+        
+        // Exponential Projection: current * (1 + r)^n
+        let p30 = (c * (1.0 + r_weighted).powf(30.0)) as i32;
+        let p90 = (c * (1.0 + r_weighted).powf(90.0)) as i32;
+        
+        let dg = current - past_1d.unwrap_or(current);
+        (p30, p90, r_weighted * 100.0, dg)
     };
-
-    let capped_growth = (daily_growth).max(-1000).min(1000);
-    let projected_30d = ((current as i32) + (capped_growth * 30)) as i32;
-    let projected_90d = ((current as i32) + (capped_growth * 90)) as i32;
 
     HttpResponse::Ok().json(json!({
         "current": current,
         "daily_growth": daily_growth,
         "growth_rate": growth_rate.max(-100.0).min(100.0),
         "projected_30d": projected_30d.max(0),
-        "projected_90d": projected_90d.max(0)
+        "projected_90d": projected_90d.max(0),
+        "model": model
     }))
 }
 
