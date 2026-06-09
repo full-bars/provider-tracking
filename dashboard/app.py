@@ -364,26 +364,53 @@ def api_growth_projection():
     conn = get_db()
     cursor = conn.cursor()
 
-    latest = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()[0]
-    day_ago = (datetime.fromisoformat(latest) - timedelta(days=1)).isoformat(sep=' ')
+    latest_row = cursor.execute("SELECT MAX(timestamp) FROM provider_counts").fetchone()
+    if not latest_row or not latest_row[0]:
+        conn.close()
+        return jsonify({'error': 'No data available'})
+    
+    latest = latest_row[0]
+    
+    def get_total_at(ts_offset_days):
+        target_ts = (datetime.fromisoformat(latest) - timedelta(days=ts_offset_days)).isoformat(sep=' ')
+        row = cursor.execute("""
+            SELECT SUM(provider_count) as total FROM provider_counts
+            WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)
+        """, (target_ts,)).fetchone()
+        return row['total'] if row and row['total'] is not None else None
 
-    cursor.execute("SELECT SUM(provider_count) as total FROM provider_counts WHERE timestamp = ?", (latest,))
-    current = cursor.fetchone()['total']
-
-    cursor.execute("""
-        SELECT SUM(provider_count) as total FROM provider_counts
-        WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)
-    """, (day_ago,))
-    row = cursor.fetchone()
-    past = (row['total'] if row and row['total'] is not None else None) or current
-
-    daily_growth = current - past
-    growth_rate = (daily_growth / past * 100) if past > 0 else 0
-
-    # Cap projections at reasonable bounds to avoid astronomical numbers from data anomalies
-    capped_growth = max(-1000, min(1000, daily_growth))
-    projected_30d = int(current + (capped_growth * 30))
-    projected_90d = int(current + (capped_growth * 90))
+    current = get_total_at(0)
+    past_3d = get_total_at(3)
+    past_7d = get_total_at(7)
+    past_1d = get_total_at(1)
+    
+    # Fallback logic if we don't have enough history
+    if current is None or past_3d is None or past_7d is None or current == 0 or past_3d == 0 or past_7d == 0:
+        p1 = past_1d if past_1d is not None else current
+        daily_growth = current - p1
+        growth_rate = (daily_growth / p1 * 100) if p1 > 0 else 0
+        projected_30d = int(current + (daily_growth * 30))
+        projected_90d = int(current + (daily_growth * 90))
+        model = "linear-1d-fallback"
+    else:
+        # Smarter Algorithm: Weighted Rolling Momentum
+        # Calculate daily compounded growth rates for 3d and 7d horizons
+        r3 = (current / past_3d)**(1/3) - 1
+        r7 = (current / past_7d)**(1/7) - 1
+        
+        # Weighting: 70% to stable 7-day trend, 30% to recent 3-day momentum
+        r_weighted = (0.7 * r7) + (0.3 * r3)
+        
+        # Cap r_weighted to +/- 5% daily to prevent astronomical projections from anomalies
+        r_weighted = max(-0.05, min(0.05, r_weighted))
+        
+        # Exponential Projection: current * (1 + r)^n
+        projected_30d = int(current * ((1 + r_weighted)**30))
+        projected_90d = int(current * ((1 + r_weighted)**90))
+        
+        daily_growth = current - (past_1d if past_1d is not None else current)
+        growth_rate = r_weighted * 100
+        model = "weighted-exponential"
 
     conn.close()
     return jsonify({
@@ -391,7 +418,8 @@ def api_growth_projection():
         'daily_growth': daily_growth,
         'growth_rate': max(-100, min(100, growth_rate)),
         'projected_30d': max(0, projected_30d),
-        'projected_90d': max(0, projected_90d)
+        'projected_90d': max(0, projected_90d),
+        'model': model
     })
 
 @app.route('/api/churn/<code>')
