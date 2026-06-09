@@ -293,7 +293,7 @@
 
             if (growth.growth_rate !== undefined) {
                 const rate = growth.growth_rate;
-                document.getElementById('growth-rate').textContent = rate >= 0 ? `+${rate.toFixed(1)}%` : `${rate.toFixed(1)}%`;
+                document.getElementById('growth-rate').textContent = rate >= 0 ? `+${rate.toFixed(2)}%` : `${rate.toFixed(2)}%`;
                 document.getElementById('growth-rate').style.color = rate >= 0 ? '#4ade80' : '#f87171';
                 document.getElementById('projected-30d').textContent = (growth.projected_30d || 0).toLocaleString();
             }
