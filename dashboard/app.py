@@ -660,8 +660,10 @@ def api_movers_detailed():
         past_counts = {row[0]: row[1] for row in cursor.fetchall()}
 
         for cc in country_data:
-            past_count = past_counts.get(cc, country_data[cc].get('current', 0))
-            delta = country_data[cc].get('current', 0) - past_count
+            if cc in past_counts:
+                delta = country_data[cc].get('current', 0) - past_counts[cc]
+            else:
+                delta = None
             country_data[cc]['deltas'][window_name] = delta
 
     # Sort by 24h delta and get top 50
@@ -1229,7 +1231,10 @@ DASHBOARD_HTML = '''
 
             tbody.innerHTML = await Promise.all(data.map(async (row) => {
                 const deltaColumns = windows.map(w => {
-                    const delta = row.deltas[w] || 0;
+                    const delta = row.deltas[w];
+                    if (delta === null || delta === undefined) {
+                        return `<td style="color: #9ca3af;">N/A</td>`;
+                    }
                     const color = delta >= 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#9ca3af';
                     return `<td style="color: ${color}; ${w === '24h' ? 'font-weight:bold;background:rgba(74,222,128,0.08)' : ''}">${(delta >= 0 ? '+' : '') + delta.toLocaleString()}</td>`;
                 }).join('');
