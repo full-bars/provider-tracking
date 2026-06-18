@@ -259,6 +259,8 @@ pub async fn api_movers_detailed(state: web::Data<AppState>) -> HttpResponse {
         ("5d", 7200),
         ("6d", 8640),
         ("7d", 10080),
+        ("14d", 20160),
+        ("30d", 43200),
     ];
 
     let current_countries = match db::get_countries_at_timestamp(pool, &latest).await {
@@ -273,11 +275,11 @@ pub async fn api_movers_detailed(state: web::Data<AppState>) -> HttpResponse {
 
         for (window_name, minutes) in windows.iter() {
             let past_time = format_time_offset(&latest, -(*minutes as i32));
-            let delta = match db::get_country_at_time(pool, &cc.country_code, &past_time).await {
-                Ok(Some(past_count)) => cc.provider_count - past_count,
-                _ => 0,
+            let delta_val = match db::get_country_at_time(pool, &cc.country_code, &past_time).await {
+                Ok(Some(past_count)) => json!(cc.provider_count - past_count),
+                _ => json!(null),
             };
-            deltas.insert(window_name.to_string(), delta);
+            deltas.insert(window_name.to_string(), delta_val);
         }
 
         country_data.insert(
