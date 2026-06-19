@@ -677,6 +677,26 @@ def api_movers_detailed():
     conn.close()
     return jsonify({'gainers': gainers, 'losers': losers})
 
+@app.route('/api/top-countries')
+def api_top_countries():
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT MAX(timestamp) FROM provider_counts")
+    latest = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT country_code, country_name, provider_count
+        FROM provider_counts
+        WHERE timestamp = ?
+        ORDER BY provider_count DESC
+        LIMIT 5
+    """, (latest,))
+
+    result = [{'code': row[0], 'name': row[1], 'current': row[2]} for row in cursor.fetchall()]
+    conn.close()
+    return jsonify(result)
+
 @app.route('/api/country/<code>')
 def api_country(code):
     conn = get_db()
@@ -1278,8 +1298,19 @@ DASHBOARD_HTML = '''
         });
 
         let comparisonChart;
-        let comparisonCountries = ['us', 'de'];
+        let comparisonCountries = [];
         const colors = ['#60a5fa', '#f59e0b', '#4ade80', '#f87171', '#a78bfa', '#14b8a6'];
+
+        async function initializeComparison() {
+            try {
+                const topCountries = await fetch('/api/top-countries').then(r => r.json());
+                comparisonCountries = topCountries.map(c => c.code);
+                renderComparisonInputs();
+            } catch (e) {
+                comparisonCountries = ['us', 'de'];
+                renderComparisonInputs();
+            }
+        }
 
         document.getElementById('add-comparison-btn').addEventListener('click', () => {
             comparisonCountries.push('');
@@ -1376,7 +1407,7 @@ DASHBOARD_HTML = '''
         }
         
         loadData();
-        updateComparison();
+        initializeComparison().then(() => updateComparison());
         startRefreshTimer();
     </script>
 </body>

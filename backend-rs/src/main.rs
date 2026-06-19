@@ -63,6 +63,7 @@ async fn main() -> Result<()> {
                             .route("/anomalies", web::get().to(api_anomalies))
                             .route("/movers", web::get().to(api_movers))
                             .route("/movers-detailed", web::get().to(api_movers_detailed))
+                            .route("/top-countries", web::get().to(api_top_countries))
                             .route("/growth-projection", web::get().to(api_growth_projection))
                             .route("/country-stats/{code}", web::get().to(api_country_stats))
                             .route("/country/{code}", web::get().to(api_country))

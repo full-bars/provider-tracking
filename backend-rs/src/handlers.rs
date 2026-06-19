@@ -326,6 +326,34 @@ pub async fn api_movers_detailed(state: web::Data<AppState>) -> HttpResponse {
     HttpResponse::Ok().json(json!({"gainers": gainers, "losers": losers}))
 }
 
+pub async fn api_top_countries(state: web::Data<AppState>) -> HttpResponse {
+    let pool = &state.pool;
+
+    let latest = match db::get_latest_timestamp(pool).await {
+        Ok(ts) => ts,
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
+
+    let countries = match db::get_countries_at_timestamp(pool, &latest).await {
+        Ok(c) => c,
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
+
+    let mut sorted: Vec<_> = countries
+        .into_iter()
+        .map(|c| json!({"code": c.country_code, "name": c.country_name, "current": c.provider_count}))
+        .collect();
+
+    sorted.sort_by(|a, b| {
+        let count_a = a.get("current").and_then(|v| v.as_i64()).unwrap_or(0);
+        let count_b = b.get("current").and_then(|v| v.as_i64()).unwrap_or(0);
+        count_b.cmp(&count_a)
+    });
+
+    let top_5: Vec<_> = sorted.into_iter().take(5).collect();
+    HttpResponse::Ok().json(top_5)
+}
+
 pub async fn api_country_stats(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let pool = &state.pool;
     let code = path.into_inner();
