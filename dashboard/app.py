@@ -96,9 +96,18 @@ def api_summary():
     week_ago_total = row['total'] if row and row['total'] is not None else current_total
     week_delta = current_total - week_ago_total
 
+    # Two-week delta
+    two_week_ago = (datetime.fromisoformat(latest) - timedelta(days=14)).isoformat(sep=' ')
+    cursor.execute("""
+        SELECT SUM(provider_count) as total FROM provider_counts
+        WHERE timestamp = (SELECT timestamp FROM provider_counts WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1)
+    """, (two_week_ago,))
+    row = cursor.fetchone()
+    two_week_ago_total = row['total'] if row and row['total'] is not None else current_total
+    two_week_delta = current_total - two_week_ago_total
+
     # Time periods for ranges
     week_ago = (datetime.fromisoformat(latest) - timedelta(days=7)).isoformat(sep=' ')
-    two_week_ago = (datetime.fromisoformat(latest) - timedelta(days=14)).isoformat(sep=' ')
     month_ago = (datetime.fromisoformat(latest) - timedelta(days=30)).isoformat(sep=' ')
 
     # Top 10
@@ -206,6 +215,7 @@ def api_summary():
         'hour_delta': hour_delta,
         'day_delta': day_delta,
         'week_delta': week_delta,
+        'two_week_delta': two_week_delta,
         'top_10': top_10,
         'hour_range': [hour_low, hour_high],
         'day_range': [day_low, day_high],
@@ -389,6 +399,8 @@ def api_growth_projection():
         p1 = past_1d if past_1d is not None else current
         daily_growth = current - p1
         growth_rate = (daily_growth / p1 * 100) if p1 > 0 else 0
+        projected_7d = int(current + (daily_growth * 7))
+        projected_14d = int(current + (daily_growth * 14))
         projected_30d = int(current + (daily_growth * 30))
         projected_90d = int(current + (daily_growth * 90))
         model = "linear-1d-fallback"
@@ -405,6 +417,8 @@ def api_growth_projection():
         r_weighted = max(-0.05, min(0.05, r_weighted))
         
         # Exponential Projection: current * (1 + r)^n
+        projected_7d = int(current * ((1 + r_weighted)**7))
+        projected_14d = int(current * ((1 + r_weighted)**14))
         projected_30d = int(current * ((1 + r_weighted)**30))
         projected_90d = int(current * ((1 + r_weighted)**90))
         
@@ -417,6 +431,8 @@ def api_growth_projection():
         'current': current,
         'daily_growth': daily_growth,
         'growth_rate': max(-100, min(100, growth_rate)),
+        'projected_7d': max(0, projected_7d),
+        'projected_14d': max(0, projected_14d),
         'projected_30d': max(0, projected_30d),
         'projected_90d': max(0, projected_90d),
         'model': model
@@ -794,6 +810,9 @@ DASHBOARD_HTML = '''
             </div>
         </div>
 
+        <div class="alert-banner" id="stale-alert" style="background:#7f1d1d; border:1px solid #991b1b; color:#fecaca; padding:10px 15px; border-radius:8px; margin-bottom:10px; display:none; width:fit-content;">
+            <strong>⚠️ Stale Data:</strong> <span id="stale-text" style="margin-left: 8px;">Last poll was over 30 minutes ago</span>
+        </div>
         <div class="alert-banner" id="anomaly-alert">
             <strong>⚠️ Anomalies:</strong> <span id="anomaly-text" style="margin-left: 8px;"></span>
         </div>
@@ -835,25 +854,28 @@ DASHBOARD_HTML = '''
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="top-country">-</div>
-                <div class="stat-label">Largest Country</div>
-                <div class="stat-delta" id="top-country-code">-</div>
-                <div style="margin-top: 10px; font-size: 11px; color: #a0aec0; border-top: 1px solid #2d3748; padding-top: 8px;">
-                    2nd: <span id="second-country-code" style="color: #e0e6ed;">-</span> (<span id="second-country">-</span>)
+                <div class="stat-label">Top Countries</div>
+                <div style="margin-top: 10px; font-size: 12px; color: #a0aec0; border-top: 1px solid #2d3748; padding-top: 8px;">
+                    <div>1. <span id="top-country-code" style="color:#e0e6ed;font-weight:600;">-</span> <span id="top-country-count" style="color:#9ca3af;"></span></div>
+                    <div>2. <span id="second-country-code" style="color:#e0e6ed;">-</span> <span id="second-country" style="color:#9ca3af;"></span></div>
+                    <div>3. <span id="third-country-code" style="color:#e0e6ed;">-</span> <span id="third-country" style="color:#9ca3af;"></span></div>
+                    <div>4. <span id="fourth-country-code" style="color:#e0e6ed;">-</span> <span id="fourth-country" style="color:#9ca3af;"></span></div>
+                    <div>5. <span id="fifth-country-code" style="color:#e0e6ed;">-</span> <span id="fifth-country" style="color:#9ca3af;"></span></div>
                 </div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" id="hour-delta">-</div>
-                <div class="stat-label">Change (1h)</div>
+                <div class="stat-label" style="font-size:14px;">Change (1h): <span id="hour-delta" style="font-size:32px;font-weight:bold;"></span></div>
                 <div style="margin-top: 8px;">
-                    <div class="inline-delta">24h: <span id="day-delta-inline">-</span></div>
-                    <div class="inline-delta">7d: <span id="week-delta-inline">-</span></div>
+                    <span class="inline-delta" style="margin-right:12px;">24h: <span id="day-delta-inline">-</span></span>
+                    <span class="inline-delta" style="margin-right:12px;">7d: <span id="week-delta-inline">-</span></span>
+                    <span class="inline-delta">14d: <span id="two-week-delta-inline">-</span></span>
                 </div>
                 <div class="last-update">Refreshing in <span id="refresh-timer">5m</span></div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="growth-rate">-</div>
                 <div class="stat-label">Daily Growth Rate</div>
-                <div class="stat-delta">→ <span id="projected-30d">-</span> in 30d</div>
+                <div class="stat-delta">7d: <span id="projected-7d">-</span> &nbsp;·&nbsp; 14d: <span id="projected-14d">-</span> &nbsp;·&nbsp; 30d: <span id="projected-30d">-</span></div>
                 <div style="margin-top: 10px; font-size: 11px; color: #a0aec0; border-top: 1px solid #2d3748; padding-top: 8px;">
                     Weekly Growth Rate: <span id="weekly-growth-rate" style="color: #e0e6ed;">-</span>
                 </div>
@@ -938,6 +960,19 @@ DASHBOARD_HTML = '''
         let refreshInterval, liveTickerInterval;
         let countryMap = {}; // Maps country names and codes to codes
 
+        function relativeTime(date) {
+            const now = new Date();
+            const diffSec = Math.abs(Math.floor((now - date) / 1000));
+            const diffMin = Math.floor(diffSec / 60);
+            const diffHour = Math.floor(diffMin / 60);
+            const diffDay = Math.floor(diffHour / 24);
+            if (diffDay >= 30) { const m = Math.floor(diffDay / 30); return m >= 12 ? `${Math.floor(diffDay / 365)}y ago` : `${m}mo ago`; }
+            if (diffDay > 0) return `${diffDay}d ${diffHour % 24}h ago`;
+            if (diffHour > 0) return `${diffHour}h ${diffMin % 60}m ago`;
+            if (diffMin > 0) return `${diffMin}m ago`;
+            return `${diffSec}s ago`;
+        }
+
         async function loadData() {
             const summary = await fetch('/api/summary').then(r => r.json());
             const networkTotal = await fetch('/api/network_total').then(r => r.json());
@@ -995,6 +1030,18 @@ DASHBOARD_HTML = '''
             const regions = await fetch('/api/regions').then(r => r.json()).catch(() => ([]));
             const atRisk = await fetch('/api/at-risk').then(r => r.json()).catch(() => ({ disappeared: [], near_zero: [] }));
 
+            if (summary.timestamp) {
+                const lastPoll = parseUTC(summary.timestamp);
+                const staleMins = Math.floor(Math.abs((new Date() - lastPoll)) / 60000);
+                const staleBanner = document.getElementById('stale-alert');
+                if (staleMins > 30) {
+                    document.getElementById('stale-text').textContent = `Last poll was ${staleMins} minutes ago`;
+                    staleBanner.style.display = 'block';
+                } else {
+                    staleBanner.style.display = 'none';
+                }
+            }
+
             const anomalyBanner = document.getElementById('anomaly-alert');
             if (anomalies.anomalies && anomalies.anomalies.length > 0) {
                 const anomalyText = anomalies.anomalies.map(a => {
@@ -1011,15 +1058,25 @@ DASHBOARD_HTML = '''
                 const rate = growth.growth_rate;
                 document.getElementById('growth-rate').textContent = rate >= 0 ? `+${rate.toFixed(2)}%` : `${rate.toFixed(2)}%`;
                 document.getElementById('growth-rate').style.color = rate >= 0 ? '#4ade80' : '#f87171';
+                document.getElementById('projected-7d').textContent = (growth.projected_7d || 0).toLocaleString();
+                document.getElementById('projected-14d').textContent = (growth.projected_14d || 0).toLocaleString();
                 document.getElementById('projected-30d').textContent = (growth.projected_30d || 0).toLocaleString();
             }
 
             document.getElementById('total').textContent = summary.total.toLocaleString();
-            document.getElementById('top-country-code').textContent = summary.top_10[0].country_code.toUpperCase();
             document.getElementById('top-country').textContent = summary.top_10[0].provider_count.toLocaleString();
-            if (summary.top_10.length > 1) {
-                document.getElementById('second-country-code').textContent = summary.top_10[1].country_code.toUpperCase();
-                document.getElementById('second-country').textContent = summary.top_10[1].provider_count.toLocaleString();
+            document.getElementById('top-country-code').textContent = summary.top_10[0].country_code.toUpperCase();
+            document.getElementById('top-country-count').textContent = summary.top_10[0].provider_count.toLocaleString();
+            for (let i = 1; i < 5; i++) {
+                const elCode = document.getElementById(['second','third','fourth','fifth'][i-1] + '-country-code');
+                const elCount = document.getElementById(['second','third','fourth','fifth'][i-1] + '-country');
+                if (summary.top_10[i]) {
+                    elCode.textContent = summary.top_10[i].country_code.toUpperCase();
+                    elCount.textContent = '(' + summary.top_10[i].provider_count.toLocaleString() + ')';
+                } else {
+                    elCode.textContent = '-';
+                    elCount.textContent = '';
+                }
             }
             
             let wkRate = summary.total - summary.week_delta > 0 ? (summary.week_delta / (summary.total - summary.week_delta) * 100).toFixed(2) : 0;
@@ -1039,15 +1096,20 @@ DASHBOARD_HTML = '''
             document.getElementById('week-delta-inline').textContent = (weekDelta >= 0 ? '+' : '') + weekDelta.toLocaleString();
             document.getElementById('week-delta-inline').className = weekDelta >= 0 ? 'delta-positive' : 'delta-negative';
 
+            const twoWeekDelta = summary.two_week_delta;
+            document.getElementById('two-week-delta-inline').textContent = (twoWeekDelta >= 0 ? '+' : '') + twoWeekDelta.toLocaleString();
+            document.getElementById('two-week-delta-inline').className = twoWeekDelta >= 0 ? 'delta-positive' : 'delta-negative';
+
+            function parseUTC(ts) { return new Date(ts.replace(' ', 'T') + 'Z'); }
             if (summary.ath) {
                 document.getElementById('ath-value').textContent = summary.ath.value.toLocaleString();
-                const athDate = new Date(summary.ath.timestamp);
-                document.getElementById('ath-date').textContent = athDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'});
+                const athDate = parseUTC(summary.ath.timestamp);
+                document.getElementById('ath-date').textContent = athDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'}) + ' (' + relativeTime(athDate) + ')';
             }
             if (summary.atl) {
                 document.getElementById('atl-value').textContent = summary.atl.value.toLocaleString();
-                const atlDate = new Date(summary.atl.timestamp);
-                document.getElementById('atl-date').textContent = atlDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'});
+                const atlDate = parseUTC(summary.atl.timestamp);
+                document.getElementById('atl-date').textContent = atlDate.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'}) + ' (' + relativeTime(atlDate) + ')';
             }
 
             if (totalChart) totalChart.destroy();

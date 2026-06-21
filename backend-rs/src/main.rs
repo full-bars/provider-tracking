@@ -1,15 +1,12 @@
 use actix_web::{web, App, HttpServer, HttpResponse, middleware};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
-use chrono::{DateTime, Utc, Duration};
 use anyhow::Result;
-use std::collections::HashMap;
 
 mod models;
 mod handlers;
 mod db;
 mod regions;
 
-use models::*;
 use handlers::*;
 
 #[derive(Clone)]
@@ -67,6 +64,8 @@ async fn main() -> Result<()> {
                             .route("/growth-projection", web::get().to(api_growth_projection))
                             .route("/country-stats/{code}", web::get().to(api_country_stats))
                             .route("/country/{code}", web::get().to(api_country))
+                            .route("/churn/{code}", web::get().to(api_churn))
+                            .route("/comparison/{code1}/{code2}", web::get().to(api_comparison))
                     )
             )
     })

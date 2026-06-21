@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ProviderCount {
@@ -22,6 +21,7 @@ pub struct SummaryResponse {
     pub hour_delta: i32,
     pub day_delta: i32,
     pub week_delta: i32,
+    pub two_week_delta: i32,
     pub top_10: Vec<CountryCount>,
     pub hour_range: (i32, i32),
     pub day_range: (i32, i32),

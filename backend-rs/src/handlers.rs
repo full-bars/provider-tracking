@@ -52,6 +52,8 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
     let week_ago_total = db::get_total_at_timestamp(pool, &week_ago).await.unwrap_or(None).unwrap_or(current_total);
     let week_delta = current_total - week_ago_total;
     let two_week_ago = format_time_offset(&latest, -20160);
+    let two_week_ago_total = db::get_total_at_timestamp(pool, &two_week_ago).await.unwrap_or(None).unwrap_or(current_total);
+    let two_week_delta = current_total - two_week_ago_total;
     let month_ago = format_time_offset(&latest, -43200);
 
     let top_10 = match db::get_top_countries(pool, &latest, 10).await {
@@ -73,6 +75,7 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
         hour_delta,
         day_delta,
         week_delta,
+        two_week_delta,
         top_10,
         hour_range: (hour_low, hour_high),
         day_range: (day_low, day_high),
@@ -259,6 +262,8 @@ pub async fn api_movers_detailed(state: web::Data<AppState>) -> HttpResponse {
         ("5d", 7200),
         ("6d", 8640),
         ("7d", 10080),
+        ("14d", 20160),
+        ("30d", 43200),
     ];
 
     let current_countries = match db::get_countries_at_timestamp(pool, &latest).await {
@@ -420,13 +425,15 @@ pub async fn api_growth_projection(state: web::Data<AppState>) -> HttpResponse {
     let past_7d = db::get_total_at_timestamp(pool, &format_time_offset(&latest, -10080)).await.unwrap_or(None);
 
     let mut model = "weighted-exponential";
-    let (projected_30d, projected_90d, growth_rate, daily_growth) = if current == 0 || past_3d.is_none() || past_7d.is_none() || past_3d == Some(0) || past_7d == Some(0) {
+    let (projected_7d, projected_14d, projected_30d, projected_90d, growth_rate, daily_growth) = if current == 0 || past_3d.is_none() || past_7d.is_none() || past_3d == Some(0) || past_7d == Some(0) {
         // Fallback to linear 1-day logic
         let p1 = past_1d.unwrap_or(current);
         let dg = current - p1;
         let gr = if p1 > 0 { ((dg as f64) / (p1 as f64)) * 100.0 } else { 0.0 };
         model = "linear-1d-fallback";
         (
+            (current as i32 + (dg * 7)) as i32,
+            (current as i32 + (dg * 14)) as i32,
             (current as i32 + (dg * 30)) as i32,
             (current as i32 + (dg * 90)) as i32,
             gr,
@@ -448,21 +455,60 @@ pub async fn api_growth_projection(state: web::Data<AppState>) -> HttpResponse {
         r_weighted = r_weighted.max(-0.05).min(0.05);
         
         // Exponential Projection: current * (1 + r)^n
+        let p7 = (c * (1.0 + r_weighted).powf(7.0)) as i32;
+        let p14 = (c * (1.0 + r_weighted).powf(14.0)) as i32;
         let p30 = (c * (1.0 + r_weighted).powf(30.0)) as i32;
         let p90 = (c * (1.0 + r_weighted).powf(90.0)) as i32;
         
         let dg = current - past_1d.unwrap_or(current);
-        (p30, p90, r_weighted * 100.0, dg)
+        (p7, p14, p30, p90, r_weighted * 100.0, dg)
     };
 
     HttpResponse::Ok().json(json!({
         "current": current,
         "daily_growth": daily_growth,
         "growth_rate": growth_rate.max(-100.0).min(100.0),
+        "projected_7d": projected_7d.max(0),
+        "projected_14d": projected_14d.max(0),
         "projected_30d": projected_30d.max(0),
         "projected_90d": projected_90d.max(0),
         "model": model
     }))
+}
+
+pub async fn api_churn(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+    let pool = &state.pool;
+    let code = path.into_inner();
+
+    match db::get_country_history(pool, &code, 24).await {
+        Ok(data) => {
+            let response: Vec<_> = data.iter().map(|d| json!({"timestamp": d.timestamp, "count": d.provider_count})).collect();
+            if response.len() < 2 {
+                return HttpResponse::Ok().json(json!({"churn_rate": 0, "volatility": "N/A", "data": response}));
+            }
+            let changes: Vec<i32> = (0..response.len()-1).map(|i| (response[i+1]["count"].as_i64().unwrap_or(0) - response[i]["count"].as_i64().unwrap_or(0)).abs() as i32).collect();
+            let avg_change = if changes.is_empty() { 0.0 } else { changes.iter().sum::<i32>() as f64 / changes.len() as f64 };
+            let volatility = if avg_change > 100.0 { "high" } else if avg_change > 50.0 { "medium" } else { "low" };
+            HttpResponse::Ok().json(json!({"churn_rate": avg_change, "volatility": volatility, "data": response}))
+        }
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
+}
+
+pub async fn api_comparison(state: web::Data<AppState>, path: web::Path<(String, String)>) -> HttpResponse {
+    let pool = &state.pool;
+    let (code1, code2) = path.into_inner();
+
+    let data1 = match db::get_country_history(pool, &code1, 720).await {
+        Ok(d) => d.iter().map(|d| json!({"timestamp": d.timestamp, "code": code1.to_uppercase(), "count": d.provider_count})).collect::<Vec<_>>(),
+        Err(_) => vec![],
+    };
+    let data2 = match db::get_country_history(pool, &code2, 720).await {
+        Ok(d) => d.iter().map(|d| json!({"timestamp": d.timestamp, "code": code2.to_uppercase(), "count": d.provider_count})).collect::<Vec<_>>(),
+        Err(_) => vec![],
+    };
+
+    HttpResponse::Ok().json(json!({"data1": data1, "data2": data2}))
 }
 
 // Helper function - offset is in minutes
