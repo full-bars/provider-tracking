@@ -2,11 +2,10 @@ name: Build Rust Binary
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
   schedule:
-    - cron: '0 6 * * 1'  # Weekly Monday 06:00 UTC
+    - cron: '0 6 * * 1'
 
 permissions:
   contents: write
@@ -17,25 +16,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache Rust toolchain and dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.rustup
-          key: rust-${{ runner.os }}-${{ hashFiles('backend-rs/Cargo.lock') }}
-          restore-keys: rust-${{ runner.os }}-
-
-      - name: Install Rust toolchain
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build release binary
-        run: |
-          cd backend-rs
-          cargo build --release
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend-rs
+          shared-key: release-build
 
-      - name: Create release
+      - name: Build
+        working-directory: backend-rs
+        run: cargo build --release
+
+      - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
