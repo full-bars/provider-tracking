@@ -1,15 +1,12 @@
 use actix_web::{web, App, HttpServer, HttpResponse, middleware};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
-use chrono::{DateTime, Utc, Duration};
 use anyhow::Result;
-use std::collections::HashMap;
 
 mod models;
 mod handlers;
 mod db;
 mod regions;
 
-use models::*;
 use handlers::*;
 
 #[derive(Clone)]
@@ -50,6 +47,7 @@ async fn main() -> Result<()> {
         App::new()
             .app_data(web::Data::new(state.clone()))
             .wrap(middleware::Logger::default())
+            .wrap(middleware::DefaultHeaders::new().add(("Cache-Control", "no-cache, no-store, must-revalidate")))
             .service(
                 web::scope("")
                     .route("/", web::get().to(dashboard))
@@ -63,9 +61,12 @@ async fn main() -> Result<()> {
                             .route("/anomalies", web::get().to(api_anomalies))
                             .route("/movers", web::get().to(api_movers))
                             .route("/movers-detailed", web::get().to(api_movers_detailed))
+                            .route("/top-countries", web::get().to(api_top_countries))
                             .route("/growth-projection", web::get().to(api_growth_projection))
                             .route("/country-stats/{code}", web::get().to(api_country_stats))
                             .route("/country/{code}", web::get().to(api_country))
+                            .route("/churn/{code}", web::get().to(api_churn))
+                            .route("/comparison/{code1}/{code2}", web::get().to(api_comparison))
                     )
             )
     })

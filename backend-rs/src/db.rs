@@ -1,8 +1,7 @@
-use sqlx::{SqlitePool, Row};
-use chrono::{DateTime, Utc, Duration};
+use sqlx::SqlitePool;
+use chrono::Duration;
 use anyhow::Result;
 use crate::models::*;
-use std::collections::HashMap;
 
 pub async fn get_latest_timestamp(pool: &SqlitePool) -> Result<String> {
     let result = sqlx::query_scalar::<_, String>(
@@ -178,29 +177,39 @@ pub async fn get_ath_atl(pool: &SqlitePool) -> Result<((i32, String), (i32, Stri
         timestamp: Option<String>,
     }
 
-    let ath = sqlx::query_as::<_, Record>(
-        "WITH totals AS (
-            SELECT timestamp, SUM(provider_count) as total
-            FROM provider_counts GROUP BY timestamp
+    async fn get_one(pool: &SqlitePool, atype: &str, order: &str) -> Result<(i32, String)> {
+        // Try persisted table first (table may not exist yet on old DBs)
+        let persisted = sqlx::query_as::<_, Record>(
+            "SELECT value as total, timestamp FROM ath_atl WHERE type = ?"
         )
-        SELECT timestamp, total FROM totals ORDER BY total DESC LIMIT 1"
-    )
-    .fetch_optional(pool)
-    .await?
-    .and_then(|r| Some((r.total?, r.timestamp?)))
-    .unwrap_or((0, String::new()));
+        .bind(atype)
+        .fetch_optional(pool)
+        .await;
 
-    let atl = sqlx::query_as::<_, Record>(
-        "WITH totals AS (
-            SELECT timestamp, SUM(provider_count) as total
-            FROM provider_counts GROUP BY timestamp
-        )
-        SELECT timestamp, total FROM totals ORDER BY total ASC LIMIT 1"
-    )
-    .fetch_optional(pool)
-    .await?
-    .and_then(|r| Some((r.total?, r.timestamp?)))
-    .unwrap_or((0, String::new()));
+        if let Ok(Some(r)) = persisted {
+            if let (Some(v), Some(ts)) = (r.total, r.timestamp) {
+                return Ok((v, ts));
+            }
+        }
+
+        // Fallback: compute from provider_counts
+        let q = format!(
+            "WITH totals AS (
+                SELECT timestamp, SUM(provider_count) as total
+                FROM provider_counts GROUP BY timestamp
+            )
+            SELECT timestamp, total FROM totals ORDER BY total {} LIMIT 1",
+            order
+        );
+        sqlx::query_as::<_, Record>(&q)
+            .fetch_optional(pool)
+            .await?
+            .and_then(|r| Some((r.total?, r.timestamp?)))
+            .ok_or_else(|| anyhow::anyhow!("no data"))
+    }
+
+    let ath = get_one(pool, "ath", "DESC").await.unwrap_or((0, String::new()));
+    let atl = get_one(pool, "atl", "ASC").await.unwrap_or((0, String::new()));
 
     Ok((ath, atl))
 }
