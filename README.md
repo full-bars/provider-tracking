@@ -29,7 +29,7 @@ Both backends are fully functional and produce identical results. Choose based o
 |---------|---------|---------|
 | **Memory Usage** | ~50-100 MB | ~4-5 MB |
 | **Startup Time** | ~1-2s | <100ms |
-| **Setup** | Python 3.9+ | Requires build (pre-built binary available) |
+| **Setup** | Python 3.9+ | Rust 1.70+ (or [pre-built binary](https://github.com/full-bars/provider-tracking/releases)) |
 | **Dependencies** | Minimal (Flask, requests) | Zero runtime dependencies |
 | **Performance** | Good | Excellent |
 | **Recommended For** | Quick setup, development | Production, resource-constrained environments |
@@ -37,6 +37,10 @@ Both backends are fully functional and produce identical results. Choose based o
 Both share the same database and can run simultaneously on different ports.
 - **Python**: `http://localhost:5000`
 - **Rust**: `http://localhost:5001`
+
+### Releases
+
+Pre-built Rust binaries are published on GitHub Releases when a version tag is pushed. See **Installation** below for download instructions.
 
 ## Installation
 
@@ -83,8 +87,9 @@ Dashboard available at `http://localhost:5000`
 
 **Option 2a: Use pre-built binary**
 ```bash
-# Download latest binary from releases
-wget https://github.com/full-bars/provider-tracking/releases/download/latest/provider_tracker
+# Download binary from latest release
+LATEST_TAG=$(curl -s https://api.github.com/repos/full-bars/provider-tracking/releases/latest | grep tag_name | cut -d '"' -f 4)
+wget -O provider_tracker https://github.com/full-bars/provider-tracking/releases/download/${LATEST_TAG}/provider_tracker
 chmod +x provider_tracker
 sudo cp provider_tracker /home/user/provider_tracking/
 
