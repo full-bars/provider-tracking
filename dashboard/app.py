@@ -8,6 +8,13 @@ from pathlib import Path
 app = Flask(__name__)
 DB_PATH = Path.home() / "provider_tracking" / "providers.db"
 
+@app.after_request
+def add_no_cache(response):
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 REGIONS = {
     'us': 'North America', 'ca': 'North America', 'mx': 'North America',
     'gb': 'Europe', 'de': 'Europe', 'fr': 'Europe', 'es': 'Europe', 'fi': 'Europe',
@@ -974,9 +981,10 @@ DASHBOARD_HTML = '''
         }
 
         async function loadData() {
-            const summary = await fetch('/api/summary').then(r => r.json());
-            const networkTotal = await fetch('/api/network_total').then(r => r.json());
-            const moversDetail = await fetch('/api/movers-detailed').then(r => r.json());
+            const cb = () => '?t=' + Date.now();
+            const summary = await fetch('/api/summary' + cb()).then(r => r.json()).catch(() => null);
+            const networkTotal = await fetch('/api/network_total' + cb()).then(r => r.json()).catch(() => null);
+            const moversDetail = await fetch('/api/movers-detailed' + cb()).then(r => r.json()).catch(() => ({}));
 
             // Build country name → code mapping from movers data
             if (moversDetail.gainers) {
@@ -987,12 +995,30 @@ DASHBOARD_HTML = '''
             }
             
             // Populate Tickers
-            function buildTickerHtml(gainers, losers, label, key) {
+            const tickerFallbackKeys = [
+                { key: '1h', label: '1H Movers' },
+                { key: '2h', label: '2H Movers' },
+                { key: '6h', label: '6H Movers' }
+            ];
+
+            function buildTickerHtml(gainers, losers, keysConfig) {
                 if (!gainers && !losers) return '';
-                let html = `<span style="color:#a0aec0; font-size:12px; font-weight:normal; margin-right:20px; text-transform:uppercase;">${label}</span> `;
+
+                let chosenKey = keysConfig[0].key;
+                let chosenLabel = keysConfig[0].label;
+                for (const kc of keysConfig) {
+                    let count = 0;
+                    (gainers || []).forEach(item => { if (item.deltas[kc.key] && item.deltas[kc.key] !== 0) count++; });
+                    (losers || []).forEach(item => { if (item.deltas[kc.key] && item.deltas[kc.key] !== 0) count++; });
+                    if (count > 3) { chosenKey = kc.key; chosenLabel = kc.label; break; }
+                    chosenKey = kc.key;
+                    chosenLabel = kc.label;
+                }
+
+                let html = `<span style="color:#a0aec0; font-size:12px; font-weight:normal; margin-right:20px; text-transform:uppercase;">${chosenLabel}</span> `;
                 let all = [];
-                (gainers || []).forEach(item => { if(item.deltas[key]) all.push({...item, d: item.deltas[key]}); });
-                (losers || []).forEach(item => { if(item.deltas[key]) all.push({...item, d: item.deltas[key]}); });
+                (gainers || []).forEach(item => { if(item.deltas[chosenKey]) all.push({...item, d: item.deltas[chosenKey]}); });
+                (losers || []).forEach(item => { if(item.deltas[chosenKey]) all.push({...item, d: item.deltas[chosenKey]}); });
                 all.sort((a,b) => Math.abs(b.d) - Math.abs(a.d));
                 all.slice(0, 15).forEach(item => {
                     if (item.d > 0) html += `<span class="ticker-item gain">${item.code.toUpperCase()} <span class="ticker-full-name">${item.name}</span> ▲${item.d}</span>`;
@@ -1001,8 +1027,8 @@ DASHBOARD_HTML = '''
                 return html + html;
             }
             if (moversDetail.gainers || moversDetail.losers) {
-                document.getElementById('ticker-hourly').innerHTML = buildTickerHtml(moversDetail.gainers, moversDetail.losers, '1H Movers', '1h');
-                document.getElementById('ticker-daily').innerHTML = buildTickerHtml(moversDetail.gainers, moversDetail.losers, '24H Movers', '24h');
+                document.getElementById('ticker-hourly').innerHTML = buildTickerHtml(moversDetail.gainers, moversDetail.losers, tickerFallbackKeys);
+                document.getElementById('ticker-daily').innerHTML = buildTickerHtml(moversDetail.gainers, moversDetail.losers, [{ key: '24h', label: '24H Movers' }]);
             }
 
             // Movers chart
@@ -1025,11 +1051,12 @@ DASHBOARD_HTML = '''
                 }
             });
 
-            const anomalies = await fetch('/api/anomalies?threshold=15').then(r => r.json()).catch(() => ({ anomalies: [] }));
-            const growth = await fetch('/api/growth-projection').then(r => r.json()).catch(() => ({}));
-            const regions = await fetch('/api/regions').then(r => r.json()).catch(() => ([]));
-            const atRisk = await fetch('/api/at-risk').then(r => r.json()).catch(() => ({ disappeared: [], near_zero: [] }));
+            const anomalies = await fetch('/api/anomalies?threshold=15' + cb()).then(r => r.json()).catch(() => ({ anomalies: [] }));
+            const growth = await fetch('/api/growth-projection' + cb()).then(r => r.json()).catch(() => ({}));
+            const regions = await fetch('/api/regions' + cb()).then(r => r.json()).catch(() => ([]));
+            const atRisk = await fetch('/api/at-risk' + cb()).then(r => r.json()).catch(() => ({ disappeared: [], near_zero: [] }));
 
+            if (!summary) return;
             if (summary.timestamp) {
                 const lastPoll = parseUTC(summary.timestamp);
                 const staleMins = Math.floor(Math.abs((new Date() - lastPoll)) / 60000);
@@ -1330,7 +1357,7 @@ DASHBOARD_HTML = '''
 
                 let stats = '';
                 try {
-                    const resp = await fetch(`/api/country-stats/${row.code.toLowerCase()}`);
+                    const resp = await fetch(`/api/country-stats/${row.code.toLowerCase()}?t=${Date.now()}`);
                     const s = await resp.json();
                     const vol_color = s.volatility === 'high' ? '#f87171' : s.volatility === 'medium' ? '#facc15' : '#4ade80';
                     stats = `<span class="volatility" style="color: ${vol_color};" title="Churn: ${s.churn_rate}/h">${s.volatility} (${s.churn_rate}/h)</span>`;
@@ -1349,7 +1376,7 @@ DASHBOARD_HTML = '''
         document.getElementById('country-search').addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
                 const code = e.target.value.toLowerCase();
-                const data = await fetch(`/api/country/${code}`).then(r => r.json());
+                const data = await fetch(`/api/country/${code}?t=${Date.now()}`).then(r => r.json());
                 if (countryChart) countryChart.destroy();
                 countryChart = new Chart(document.getElementById('countryChart'), {
                     type: 'line',
@@ -1377,7 +1404,7 @@ DASHBOARD_HTML = '''
 
         async function initializeComparison() {
             try {
-                const topCountries = await fetch('/api/top-countries').then(r => r.json());
+                const topCountries = await fetch('/api/top-countries?t=' + Date.now()).then(r => r.json());
                 comparisonCountries = topCountries.map(c => c.code);
                 renderComparisonInputs();
             } catch (e) {
@@ -1426,7 +1453,7 @@ DASHBOARD_HTML = '''
 
             const allData = {};
             for (let code of validCodes) {
-                const resp = await fetch(`/api/country/${code}`).catch(() => null);
+                const resp = await fetch(`/api/country/${code}?t=${Date.now()}`).catch(() => null);
                 if (resp) allData[code] = await resp.json();
             }
 
