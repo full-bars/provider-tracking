@@ -47,6 +47,7 @@ async fn main() -> Result<()> {
         App::new()
             .app_data(web::Data::new(state.clone()))
             .wrap(middleware::Logger::default())
+            .wrap(middleware::DefaultHeaders::new().add(("Cache-Control", "no-cache, no-store, must-revalidate")))
             .service(
                 web::scope("")
                     .route("/", web::get().to(dashboard))
