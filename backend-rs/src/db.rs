@@ -75,6 +75,22 @@ pub async fn get_countries_at_timestamp(pool: &SqlitePool, timestamp: &str) -> R
     Ok(rows)
 }
 
+pub async fn get_countries_before(pool: &SqlitePool, timestamp: &str) -> Result<Vec<ProviderCount>> {
+    let rows = sqlx::query_as::<_, ProviderCount>(
+        "SELECT p.timestamp, p.country_code, p.country_name, p.provider_count
+         FROM provider_counts p
+         WHERE p.timestamp = (
+             SELECT MAX(p2.timestamp) FROM provider_counts p2
+             WHERE p2.timestamp <= ? AND p2.country_code = p.country_code
+         )"
+    )
+    .bind(timestamp)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows)
+}
+
 pub async fn get_country_at_time(
     pool: &SqlitePool,
     country_code: &str,
