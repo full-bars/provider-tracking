@@ -7,6 +7,7 @@ from pathlib import Path
 import time
 import random
 import os
+import sys
 
 BASE = Path.home() / "provider_tracking"
 DB_PATH = BASE / "providers.db"
@@ -50,7 +51,7 @@ def init_db():
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ath_atl (
-            type TEXT PRIMARY KEY,
+            metric_type TEXT PRIMARY KEY,
             value INTEGER NOT NULL,
             timestamp TEXT NOT NULL
         )
@@ -59,9 +60,17 @@ def init_db():
     conn.close()
 
 def poll_api():
-    jwt = JWT_FILE.read_text().strip()
+    if not JWT_FILE.exists():
+        log_message(f"JWT file not found: {JWT_FILE}")
+        sys.exit(1)
+    jwt_raw = JWT_FILE.read_text().strip()
+    if not jwt_raw:
+        log_message(f"JWT file is empty: {JWT_FILE}")
+        sys.exit(1)
+    jwt = jwt_raw
     headers = {"Authorization": f"Bearer {jwt}"}
     for attempt in range(3):
+        response = None
         try:
             response = requests.get(
                 "https://api.bringyour.com/network/provider-locations",
@@ -71,11 +80,15 @@ def poll_api():
             response.raise_for_status()
             return response.json()
         except Exception as e:
+            resp_detail = ""
+            if response is not None:
+                resp_detail = f", status={response.status_code}, body={response.text[:500]}"
             if attempt < 2:
                 jitter = random.uniform(1, 2 ** attempt * 10)
-                log_message(f"Poll attempt {attempt+1} failed: {e}, retrying in {jitter:.0f}s")
+                log_message(f"Poll attempt {attempt+1} failed: {e}{resp_detail}, retrying in {jitter:.0f}s")
                 time.sleep(jitter)
             else:
+                log_message(f"Poll attempt {attempt+1} failed: {e}{resp_detail}, giving up")
                 raise
 
 def store_data(data):
@@ -101,19 +114,19 @@ def store_data(data):
     conn.close()
 
 def update_ath_atl(cursor, current_total, timestamp):
-    cursor.execute("SELECT value, timestamp FROM ath_atl WHERE type = 'ath'")
+    cursor.execute("SELECT value, timestamp FROM ath_atl WHERE metric_type = 'ath'")
     ath_row = cursor.fetchone()
     if ath_row is None or current_total > ath_row[0]:
-        cursor.execute("INSERT OR REPLACE INTO ath_atl (type, value, timestamp) VALUES ('ath', ?, ?)", (current_total, timestamp))
+        cursor.execute("INSERT OR REPLACE INTO ath_atl (metric_type, value, timestamp) VALUES ('ath', ?, ?)", (current_total, timestamp))
         if ath_row is None:
             log_message(f"ATH initialized: {current_total} at {timestamp}")
         else:
             log_message(f"New ATH: {current_total} (was {ath_row[0]}) at {timestamp}")
 
-    cursor.execute("SELECT value, timestamp FROM ath_atl WHERE type = 'atl'")
+    cursor.execute("SELECT value, timestamp FROM ath_atl WHERE metric_type = 'atl'")
     atl_row = cursor.fetchone()
     if atl_row is None or current_total < atl_row[0]:
-        cursor.execute("INSERT OR REPLACE INTO ath_atl (type, value, timestamp) VALUES ('atl', ?, ?)", (current_total, timestamp))
+        cursor.execute("INSERT OR REPLACE INTO ath_atl (metric_type, value, timestamp) VALUES ('atl', ?, ?)", (current_total, timestamp))
         if atl_row is None:
             log_message(f"ATL initialized: {current_total} at {timestamp}")
         else:

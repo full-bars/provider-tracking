@@ -1061,7 +1061,7 @@ DASHBOARD_HTML = '''
             if (!summary) return;
             if (summary.timestamp) {
                 const lastPoll = parseUTC(summary.timestamp);
-                const staleMins = Math.floor(Math.abs((new Date() - lastPoll)) / 60000);
+                const staleMins = Math.floor(Math.abs((Date.now() - lastPoll)) / 60000);
                 const staleBanner = document.getElementById('stale-alert');
                 if (staleMins > 30) {
                     document.getElementById('stale-text').textContent = `Last poll was ${staleMins} minutes ago`;
@@ -1074,8 +1074,9 @@ DASHBOARD_HTML = '''
                 if (staleMins < 15) indicator.style.color = '#4ade80';
                 else if (staleMins < 30) indicator.style.color = '#facc15';
                 else indicator.style.color = '#f87171';
-                setInterval(() => {
-                    const m = Math.floor(Math.abs((new Date() - lastPoll)) / 60000);
+                if (window.pollInterval) clearInterval(window.pollInterval);
+                window.pollInterval = setInterval(() => {
+                    const m = Math.floor(Math.abs((Date.now() - lastPoll)) / 60000);
                     indicator.textContent = 'Poll: ' + relativeTime(lastPoll);
                     if (m < 15) indicator.style.color = '#4ade80';
                     else if (m < 30) indicator.style.color = '#facc15';
@@ -1360,17 +1361,9 @@ DASHBOARD_HTML = '''
                     return `<td style="color: ${color}; ${w === '24h' ? 'font-weight:bold;background:rgba(74,222,128,0.08)' : ''}">${(delta >= 0 ? '+' : '') + delta.toLocaleString()}</td>`;
                 }).join('');
 
-                let stats = '';
-                try {
-                    const resp = await fetch(`/api/country-stats/${row.code.toLowerCase()}?t=${Date.now()}`);
-                    const s = await resp.json();
-                    const vol_color = s.volatility === 'high' ? '#f87171' : s.volatility === 'medium' ? '#facc15' : '#4ade80';
-                    stats = `<span class="volatility" style="color: ${vol_color};" title="Churn: ${s.churn_rate}/h">${s.volatility} (${s.churn_rate}/h)</span>`;
-                } catch(e) {}
-
                 return `
                     <tr>
-                        <td>${row.name} ${stats}</td>
+                        <td>${row.name}</td>
                         <td>${row.current.toLocaleString()}</td>
                         ${deltaColumns}
                     </tr>
