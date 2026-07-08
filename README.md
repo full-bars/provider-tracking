@@ -4,7 +4,7 @@ Real-time monitoring and analytics dashboard for URnetwork provider metrics acro
 
 ## Features
 
-- **Real-time Network Monitoring** — Live provider count tracking with hourly snapshots
+- **Real-time Network Monitoring** — Live provider count tracking with 15-minute snapshots
 - **Anomaly Detection** — Automatic detection of >15% provider count changes (configurable threshold)
 - **Regional Analysis** — 6-region aggregation (North America, Europe, Asia-Pacific, Middle East, South America, Africa) with 24-hour deltas
 - **Growth Analytics** — Daily growth rate projections with 30-day trends and volatility indicators
@@ -12,14 +12,17 @@ Real-time monitoring and analytics dashboard for URnetwork provider metrics acro
 - **Multi-Country Comparison** — Dynamic side-by-side analysis of up to 10 countries simultaneously
 - **Moving Averages** — 24-hour rolling average overlaid on network total trends
 - **Historical Data** — Up to 30 days of historical snapshots for trend analysis
+- **Smart Ticker** — Auto-fallback from 1H to 2H to 6H movers when the network is quiet
+- **Live Poll Indicator** — Color-coded freshness dot with automatic stale-data alerts
 
 ## Tech Stack
 
 - **Backend** — Python Flask with SQLite **OR** Rust with Actix-web (feature-identical, your choice)
 - **Frontend** — Vanilla JavaScript with Chart.js for visualizations
-- **Data Collection** — Hourly URnetwork API polling
+- **Data Collection** — Every 15 minutes via cron, polling the URnetwork API
 - **Deployment** — systemd service on Linux
 - **Reverse Proxy** — Caddy for HTTPS and multi-domain routing
+- **CI/CD** — GitHub Actions builds and publishes Rust binaries on `v*` tag push
 
 ## Choosing Your Backend
 
@@ -57,12 +60,12 @@ cd provider-tracking
 mkdir -p ~/provider_tracking
 ```
 
-3. Set up hourly data collection:
+3. Set up 15-minute data collection:
 ```bash
 # Add to crontab
 crontab -e
 # Add line:
-0 * * * * /path/to/poll_providers.sh >> /var/log/provider-tracking.log 2>&1
+*/15 * * * * /path/to/poll_providers.py >> /var/log/provider-tracking.log 2>&1
 ```
 
 ### Option 1: Python Flask Backend
