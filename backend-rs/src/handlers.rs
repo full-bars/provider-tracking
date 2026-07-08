@@ -276,11 +276,13 @@ pub async fn api_movers_detailed(state: web::Data<AppState>) -> HttpResponse {
     let mut past_data: HashMap<String, HashMap<String, i32>> = HashMap::new();
     for (window_name, minutes) in windows.iter() {
         let past_time = format_time_offset(&latest, -(*minutes as i32));
-        if let Ok(countries) = db::get_countries_before(pool, &past_time).await {
-            let map: HashMap<String, i32> = countries.into_iter()
-                .map(|c| (c.country_code, c.provider_count))
-                .collect();
-            past_data.insert(window_name.to_string(), map);
+        if let Ok(ts) = db::get_nearest_timestamp(pool, &past_time).await {
+            if let Ok(countries) = db::get_countries_at_timestamp(pool, &ts).await {
+                let map: HashMap<String, i32> = countries.into_iter()
+                    .map(|c| (c.country_code, c.provider_count))
+                    .collect();
+                past_data.insert(window_name.to_string(), map);
+            }
         }
     }
 

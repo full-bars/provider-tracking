@@ -63,6 +63,17 @@ pub async fn get_network_totals(pool: &SqlitePool, limit: i64) -> Result<Vec<Net
     Ok(result)
 }
 
+pub async fn get_nearest_timestamp(pool: &SqlitePool, timestamp: &str) -> Result<String> {
+    let result = sqlx::query_scalar::<_, String>(
+        "SELECT MAX(timestamp) FROM provider_counts WHERE timestamp <= ?"
+    )
+    .bind(timestamp)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(result)
+}
+
 pub async fn get_countries_at_timestamp(pool: &SqlitePool, timestamp: &str) -> Result<Vec<ProviderCount>> {
     let rows = sqlx::query_as::<_, ProviderCount>(
         "SELECT timestamp, country_code, country_name, provider_count FROM provider_counts
@@ -76,19 +87,8 @@ pub async fn get_countries_at_timestamp(pool: &SqlitePool, timestamp: &str) -> R
 }
 
 pub async fn get_countries_before(pool: &SqlitePool, timestamp: &str) -> Result<Vec<ProviderCount>> {
-    let rows = sqlx::query_as::<_, ProviderCount>(
-        "SELECT p.timestamp, p.country_code, p.country_name, p.provider_count
-         FROM provider_counts p
-         WHERE p.timestamp = (
-             SELECT MAX(p2.timestamp) FROM provider_counts p2
-             WHERE p2.timestamp <= ? AND p2.country_code = p.country_code
-         )"
-    )
-    .bind(timestamp)
-    .fetch_all(pool)
-    .await?;
-
-    Ok(rows)
+    let nearest = get_nearest_timestamp(pool, timestamp).await?;
+    get_countries_at_timestamp(pool, &nearest).await
 }
 
 pub async fn get_country_at_time(
