@@ -114,7 +114,7 @@ def api_summary():
     two_week_delta = current_total - two_week_ago_total
 
     # Time periods for ranges
-    week_ago = (datetime.fromisoformat(latest) - timedelta(days=7)).isoformat(sep=' ')
+    week_ago_range = (datetime.fromisoformat(latest) - timedelta(days=7)).isoformat(sep=' ')
     month_ago = (datetime.fromisoformat(latest) - timedelta(days=30)).isoformat(sep=' ')
 
     # Top 10
@@ -160,7 +160,7 @@ def api_summary():
             GROUP BY timestamp
         )
         SELECT MAX(total) as high, MIN(total) as low FROM totals
-    """, (week_ago, latest))
+    """, (week_ago_range, latest))
     week_range = cursor.fetchone()
     week_high = week_range['high'] or 0
     week_low = week_range['low'] or 0
@@ -283,11 +283,13 @@ def api_movers():
                 FROM provider_counts WHERE timestamp = ?
             ),
             past AS (
-                SELECT country_code, provider_count 
-                FROM provider_counts 
-                WHERE timestamp = (
-                    SELECT MIN(timestamp) FROM provider_counts WHERE timestamp >= ?
-                )
+                SELECT p.country_code, p.provider_count
+                FROM provider_counts p
+                INNER JOIN (
+                    SELECT country_code, MIN(timestamp) as ts
+                    FROM provider_counts WHERE timestamp >= ?
+                    GROUP BY country_code
+                ) pt ON p.country_code = pt.country_code AND p.timestamp = pt.ts
             )
             SELECT c.country_name, c.country_code, c.provider_count,
                    c.provider_count - COALESCE(p.provider_count, 0) as delta
@@ -303,11 +305,13 @@ def api_movers():
                 FROM provider_counts WHERE timestamp = ?
             ),
             past AS (
-                SELECT country_code, provider_count 
-                FROM provider_counts 
-                WHERE timestamp = (
-                    SELECT MIN(timestamp) FROM provider_counts WHERE timestamp >= ?
-                )
+                SELECT p.country_code, p.provider_count
+                FROM provider_counts p
+                INNER JOIN (
+                    SELECT country_code, MIN(timestamp) as ts
+                    FROM provider_counts WHERE timestamp >= ?
+                    GROUP BY country_code
+                ) pt ON p.country_code = pt.country_code AND p.timestamp = pt.ts
             )
             SELECT c.country_name, c.country_code, c.provider_count,
                    c.provider_count - COALESCE(p.provider_count, 0) as delta
@@ -603,18 +607,19 @@ def api_comparison(code1, code2):
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT timestamp, provider_count
-        FROM provider_counts
-        WHERE country_code = ?
-        ORDER BY timestamp
+        SELECT timestamp, provider_count 
+        FROM provider_counts 
+        WHERE country_code = ? 
+        ORDER BY timestamp DESC LIMIT 720
     """, (code1.lower(),))
     data1 = [{'timestamp': row[0], 'code': code1.upper(), 'count': row[1]} for row in cursor.fetchall()]
+    data1.reverse()
 
     cursor.execute("""
-        SELECT timestamp, provider_count
-        FROM provider_counts
-        WHERE country_code = ?
-        ORDER BY timestamp
+        SELECT timestamp, provider_count 
+        FROM provider_counts 
+        WHERE country_code = ? 
+        ORDER BY timestamp DESC LIMIT 720
     """, (code2.lower(),))
     data2 = [{'timestamp': row[0], 'code': code2.upper(), 'count': row[1]} for row in cursor.fetchall()]
 
