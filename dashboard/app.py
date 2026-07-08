@@ -242,7 +242,7 @@ def api_network_total():
         SELECT timestamp, SUM(provider_count) as total
         FROM provider_counts
         GROUP BY timestamp
-        ORDER BY timestamp DESC LIMIT 720
+        ORDER BY timestamp DESC LIMIT 2880
     """)
     data = [{'timestamp': row[0], 'total': row[1]} for row in cursor.fetchall()]
     data.reverse()
