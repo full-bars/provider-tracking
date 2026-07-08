@@ -39,12 +39,12 @@ pub async fn get_top_countries(pool: &SqlitePool, timestamp: &str, limit: i64) -
     Ok(rows)
 }
 
-pub async fn get_network_totals(pool: &SqlitePool, hours: i64) -> Result<Vec<NetworkTotal>> {
-    let rows = sqlx::query_as::<_, NetworkTotal>(
+pub async fn get_network_totals(pool: &SqlitePool, rows: i64) -> Result<Vec<NetworkTotal>> {
+    let result = sqlx::query_as::<_, NetworkTotal>(
         "SELECT timestamp, SUM(provider_count) as total, NULL as ma FROM provider_counts
          GROUP BY timestamp ORDER BY timestamp DESC LIMIT ?"
     )
-    .bind(hours)
+    .bind(rows)
     .fetch_all(pool)
     .await?;
 

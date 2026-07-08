@@ -91,7 +91,7 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
 
 pub async fn api_network_total(state: web::Data<AppState>) -> HttpResponse {
     let pool = &state.pool;
-    match db::get_network_totals(pool, 720).await {
+    match db::get_network_totals(pool, 2880).await {
         Ok(data) => HttpResponse::Ok().json(data),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
