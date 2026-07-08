@@ -57,7 +57,7 @@ pub async fn get_network_totals(pool: &SqlitePool, limit: i64) -> Result<Vec<Net
         let start = if i >= window { i - window + 1 } else { 0 };
         let sum: i32 = result[start..=i].iter().map(|r| r.total).sum();
         let count = (i - start + 1) as i32;
-        result[i].ma = Some((sum / count) as i32);
+        result[i].ma = Some((sum as f64 / count as f64).round() as i32);
     }
 
     Ok(result)
