@@ -148,29 +148,31 @@ pub async fn api_at_risk(state: web::Data<AppState>) -> HttpResponse {
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
+    let day_ago_countries = db::get_countries_at_timestamp(pool, &day_ago).await.unwrap_or_default();
+    let past_map: HashMap<String, i32> = day_ago_countries.into_iter()
+        .map(|c| (c.country_code, c.provider_count))
+        .collect();
+
     let mut disappeared = Vec::new();
     let mut near_zero = Vec::new();
 
     for cc in current_countries.iter() {
+        let past = past_map.get(&cc.country_code).copied();
         if cc.provider_count == 0 {
-            if let Ok(Some(past)) = db::get_country_at_time(pool, &cc.country_code, &day_ago).await {
-                if past > 0 {
-                    disappeared.push(CountryCount {
-                        country_code: cc.country_code.clone(),
-                        country_name: cc.country_name.clone(),
-                        provider_count: cc.provider_count,
-                    });
-                }
+            if past.is_some_and(|p| p > 0) {
+                disappeared.push(CountryCount {
+                    country_code: cc.country_code.clone(),
+                    country_name: cc.country_name.clone(),
+                    provider_count: cc.provider_count,
+                });
             }
         } else if cc.provider_count >= 1 && cc.provider_count <= 5 {
-            if let Ok(Some(past)) = db::get_country_at_time(pool, &cc.country_code, &day_ago).await {
-                if cc.provider_count < past {
-                    near_zero.push(CountryCount {
-                        country_code: cc.country_code.clone(),
-                        country_name: cc.country_name.clone(),
-                        provider_count: cc.provider_count,
-                    });
-                }
+            if past.is_some_and(|p| cc.provider_count < p) {
+                near_zero.push(CountryCount {
+                    country_code: cc.country_code.clone(),
+                    country_name: cc.country_name.clone(),
+                    provider_count: cc.provider_count,
+                });
             }
         }
     }
@@ -271,16 +273,26 @@ pub async fn api_movers_detailed(state: web::Data<AppState>) -> HttpResponse {
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
+    let mut past_data: HashMap<String, HashMap<String, i32>> = HashMap::new();
+    for (window_name, minutes) in windows.iter() {
+        let past_time = format_time_offset(&latest, -(*minutes as i32));
+        if let Ok(countries) = db::get_countries_at_timestamp(pool, &past_time).await {
+            let map: HashMap<String, i32> = countries.into_iter()
+                .map(|c| (c.country_code, c.provider_count))
+                .collect();
+            past_data.insert(window_name.to_string(), map);
+        }
+    }
+
     let mut country_data: HashMap<String, serde_json::Value> = HashMap::new();
 
     for cc in current_countries.iter() {
         let mut deltas = HashMap::new();
 
-        for (window_name, minutes) in windows.iter() {
-            let past_time = format_time_offset(&latest, -(*minutes as i32));
-            let delta_val = match db::get_country_at_time(pool, &cc.country_code, &past_time).await {
-                Ok(Some(past_count)) => json!(cc.provider_count - past_count),
-                _ => json!(null),
+        for (window_name, _) in windows.iter() {
+            let delta_val = match past_data.get(*window_name).and_then(|m| m.get(&cc.country_code)) {
+                Some(past_count) => json!(cc.provider_count - past_count),
+                None => json!(null),
             };
             deltas.insert(window_name.to_string(), delta_val);
         }
@@ -363,7 +375,7 @@ pub async fn api_country_stats(state: web::Data<AppState>, path: web::Path<Strin
     let pool = &state.pool;
     let code = path.into_inner();
 
-    let data = match db::get_country_history(pool, &code, 24).await {
+    let data = match db::get_country_history(pool, &code, 96).await {
         Ok(d) => d,
         Err(_) => return HttpResponse::Ok().json(json!({"volatility": "N/A", "churn_rate": 0})),
     };
