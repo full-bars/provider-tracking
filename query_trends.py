@@ -63,7 +63,9 @@ def show_top_countries(days=1, metric="current"):
         """
     elif metric == "growth":
         # Growth over last N days
-        query = f"""
+        from datetime import datetime, timedelta
+        target_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        query = """
         WITH latest AS (
             SELECT country_code, provider_count
             FROM provider_counts
@@ -72,11 +74,11 @@ def show_top_countries(days=1, metric="current"):
         oldest AS (
             SELECT country_code, provider_count
             FROM provider_counts
-            WHERE DATE(timestamp) = DATE((SELECT MAX(timestamp) FROM provider_counts), '-{days} days')
+            WHERE DATE(timestamp) = ?
             AND timestamp = (
                 SELECT MIN(timestamp)
                 FROM provider_counts p2
-                WHERE DATE(p2.timestamp) = DATE((SELECT MAX(timestamp) FROM provider_counts), '-{days} days')
+                WHERE DATE(p2.timestamp) = ?
                 AND p2.country_code = provider_counts.country_code
             )
         )
@@ -86,8 +88,7 @@ def show_top_countries(days=1, metric="current"):
         ORDER BY growth DESC
         LIMIT 20
         """
-    
-    cursor.execute(query)
+        cursor.execute(query, (target_date, target_date))
     rows = cursor.fetchall()
     conn.close()
     

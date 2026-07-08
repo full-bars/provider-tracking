@@ -106,7 +106,7 @@ def get_network_range(since_timestamp):
     return result['high'] or 0, result['low'] or 0
 
 def get_anomalies(threshold=0.15):
-    """Get countries with >threshold change in the last hour."""
+    """Get countries with >threshold (ratio, e.g. 0.15 = 15%) change in the last hour."""
     conn = get_db()
     cursor = conn.cursor()
 
@@ -119,11 +119,13 @@ def get_anomalies(threshold=0.15):
             FROM provider_counts WHERE timestamp = ?
         ),
         past AS (
-            SELECT country_code, provider_count
-            FROM provider_counts
-            WHERE timestamp = (
-                SELECT MAX(timestamp) FROM provider_counts WHERE timestamp <= ?
-            )
+            SELECT p.country_code, p.provider_count
+            FROM provider_counts p
+            INNER JOIN (
+                SELECT country_code, MAX(timestamp) as ts
+                FROM provider_counts WHERE timestamp <= ?
+                GROUP BY country_code
+            ) pt ON p.country_code = pt.country_code AND p.timestamp = pt.ts
         )
         SELECT c.country_name, c.country_code, c.provider_count,
                COALESCE(c.provider_count - p.provider_count, 0) as delta,
