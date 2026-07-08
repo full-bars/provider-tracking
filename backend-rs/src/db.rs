@@ -180,7 +180,7 @@ pub async fn get_ath_atl(pool: &SqlitePool) -> Result<((i32, String), (i32, Stri
     async fn get_one(pool: &SqlitePool, atype: &str, order: &str) -> Result<(i32, String)> {
         // Try persisted table first (table may not exist yet on old DBs)
         let persisted = sqlx::query_as::<_, Record>(
-            "SELECT value as total, timestamp FROM ath_atl WHERE type = ?"
+            "SELECT value as total, timestamp FROM ath_atl WHERE metric_type = ?"
         )
         .bind(atype)
         .fetch_optional(pool)

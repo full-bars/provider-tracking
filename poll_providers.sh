@@ -35,7 +35,7 @@ sqlite3 "$DB" "CREATE TABLE IF NOT EXISTS provider_counts (
 );
 CREATE INDEX IF NOT EXISTS idx_country_timestamp ON provider_counts(country_code, timestamp);
 CREATE TABLE IF NOT EXISTS ath_atl (
-  type TEXT PRIMARY KEY,
+  metric_type TEXT PRIMARY KEY,
   value INTEGER NOT NULL,
   timestamp TEXT NOT NULL
 );"
@@ -78,15 +78,15 @@ while IFS=$'\t' read -r ts cc cn count; do
 done < <(echo "$DATA" | jq -r ".locations[] | \"$TIMESTAMP\t\(.country_code)\t\(.name)\t\(.provider_count)\"")
 
 CURRENT_TOTAL=$(echo "$DATA" | jq '[.locations[].provider_count] | add')
-ATH_VALUE=$(sqlite3 "$DB" "SELECT value FROM ath_atl WHERE type='ath';")
-ATL_VALUE=$(sqlite3 "$DB" "SELECT value FROM ath_atl WHERE type='atl';")
+ATH_VALUE=$(sqlite3 "$DB" "SELECT value FROM ath_atl WHERE metric_type='ath';")
+ATL_VALUE=$(sqlite3 "$DB" "SELECT value FROM ath_atl WHERE metric_type='atl';")
 
 if [ -z "$ATH_VALUE" ] || [ "$CURRENT_TOTAL" -gt "$ATH_VALUE" ]; then
-  sqlite3 "$DB" "INSERT OR REPLACE INTO ath_atl VALUES ('ath', $CURRENT_TOTAL, '$TIMESTAMP');"
+  sqlite3 "$DB" "INSERT OR REPLACE INTO ath_atl (metric_type, value, timestamp) VALUES ('ath', $CURRENT_TOTAL, '$TIMESTAMP');"
   log "ATH updated: $CURRENT_TOTAL"
 fi
 if [ -z "$ATL_VALUE" ] || [ "$CURRENT_TOTAL" -lt "$ATL_VALUE" ]; then
-  sqlite3 "$DB" "INSERT OR REPLACE INTO ath_atl VALUES ('atl', $CURRENT_TOTAL, '$TIMESTAMP');"
+  sqlite3 "$DB" "INSERT OR REPLACE INTO ath_atl (metric_type, value, timestamp) VALUES ('atl', $CURRENT_TOTAL, '$TIMESTAMP');"
   log "ATL updated: $CURRENT_TOTAL"
 fi
 
