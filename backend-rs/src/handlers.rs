@@ -29,45 +29,76 @@ pub async fn api_live_total(data: web::Data<AppState>) -> actix_web::Result<Http
 
 pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
     let pool = &state.pool;
+
+    // Check cache (30s TTL — data only changes every 15min via poller)
+    {
+        let cache = state.summary_cache.lock().unwrap();
+        if let Some(ref cached) = *cache {
+            if cached.at.elapsed().as_secs() < 30 {
+                return HttpResponse::Ok().json(&cached.data);
+            }
+        }
+    }
+
     let latest = match db::get_latest_timestamp(pool).await {
         Ok(ts) => ts,
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
-    let current_total = match db::get_total_at_timestamp(pool, &latest).await {
-        Ok(Some(total)) => total,
-        Ok(None) => 0,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
-    };
-
     let hour_ago = format_time_offset(&latest, -60);
-    let hour_ago_total = db::get_total_at_timestamp(pool, &hour_ago).await.unwrap_or(None).unwrap_or(current_total);
-    let hour_delta = current_total - hour_ago_total;
-
     let day_ago = format_time_offset(&latest, -1440);
-    let day_ago_total = db::get_total_at_timestamp(pool, &day_ago).await.unwrap_or(None).unwrap_or(current_total);
-    let day_delta = current_total - day_ago_total;
-
     let week_ago = format_time_offset(&latest, -10080);
-    let week_ago_total = db::get_total_at_timestamp(pool, &week_ago).await.unwrap_or(None).unwrap_or(current_total);
-    let week_delta = current_total - week_ago_total;
     let two_week_ago = format_time_offset(&latest, -20160);
-    let two_week_ago_total = db::get_total_at_timestamp(pool, &two_week_ago).await.unwrap_or(None).unwrap_or(current_total);
-    let two_week_delta = current_total - two_week_ago_total;
     let month_ago = format_time_offset(&latest, -43200);
 
-    let top_10 = match db::get_top_countries(pool, &latest, 10).await {
-        Ok(countries) => countries,
-        Err(_) => vec![],
-    };
+    // Run all independent queries in parallel
+    let (
+        current_total_r,
+        hour_ago_total_r,
+        day_ago_total_r,
+        week_ago_total_r,
+        two_week_ago_total_r,
+        top_10_r,
+        hour_range_r,
+        day_range_r,
+        week_range_r,
+        two_week_range_r,
+        month_range_r,
+        ath_atl_r,
+    ) = tokio::join!(
+        db::get_total_at_timestamp(pool, &latest),
+        db::get_total_at_timestamp(pool, &hour_ago),
+        db::get_total_at_timestamp(pool, &day_ago),
+        db::get_total_at_timestamp(pool, &week_ago),
+        db::get_total_at_timestamp(pool, &two_week_ago),
+        db::get_top_countries(pool, &latest, 10),
+        db::get_network_range(pool, &hour_ago, &latest),
+        db::get_network_range(pool, &day_ago, &latest),
+        db::get_network_range(pool, &week_ago, &latest),
+        db::get_network_range(pool, &two_week_ago, &latest),
+        db::get_network_range(pool, &month_ago, &latest),
+        db::get_ath_atl(pool),
+    );
 
-    let (hour_high, hour_low) = db::get_network_range(pool, &hour_ago, &latest).await.unwrap_or((0, 0));
-    let (day_high, day_low) = db::get_network_range(pool, &day_ago, &latest).await.unwrap_or((0, 0));
-    let (week_high, week_low) = db::get_network_range(pool, &week_ago, &latest).await.unwrap_or((0, 0));
-    let (two_week_high, two_week_low) = db::get_network_range(pool, &two_week_ago, &latest).await.unwrap_or((0, 0));
-    let (month_high, month_low) = db::get_network_range(pool, &month_ago, &latest).await.unwrap_or((0, 0));
+    let current_total = current_total_r.unwrap_or(None).unwrap_or(0);
+    let hour_ago_total = hour_ago_total_r.unwrap_or(None).unwrap_or(current_total);
+    let day_ago_total = day_ago_total_r.unwrap_or(None).unwrap_or(current_total);
+    let week_ago_total = week_ago_total_r.unwrap_or(None).unwrap_or(current_total);
+    let two_week_ago_total = two_week_ago_total_r.unwrap_or(None).unwrap_or(current_total);
 
-    let ((ath_value, ath_ts), (atl_value, atl_ts)) = db::get_ath_atl(pool).await.unwrap_or(((current_total, latest.clone()), (current_total, latest.clone())));
+    let hour_delta = current_total - hour_ago_total;
+    let day_delta = current_total - day_ago_total;
+    let week_delta = current_total - week_ago_total;
+    let two_week_delta = current_total - two_week_ago_total;
+
+    let top_10 = top_10_r.unwrap_or_default();
+
+    let (hour_high, hour_low) = hour_range_r.unwrap_or((0, 0));
+    let (day_high, day_low) = day_range_r.unwrap_or((0, 0));
+    let (week_high, week_low) = week_range_r.unwrap_or((0, 0));
+    let (two_week_high, two_week_low) = two_week_range_r.unwrap_or((0, 0));
+    let (month_high, month_low) = month_range_r.unwrap_or((0, 0));
+    let ((ath_value, ath_ts), (atl_value, atl_ts)) = ath_atl_r.unwrap_or(((current_total, latest.clone()), (current_total, latest.clone())));
 
     let response = SummaryResponse {
         timestamp: latest,
@@ -86,13 +117,39 @@ pub async fn api_summary(state: web::Data<AppState>) -> HttpResponse {
         atl: AthAtl { value: atl_value, timestamp: atl_ts },
     };
 
+    // Cache the response
+    {
+        let mut cache = state.summary_cache.lock().unwrap();
+        *cache = Some(CachedResponse {
+            data: response.clone(),
+            at: std::time::Instant::now(),
+        });
+    }
+
     HttpResponse::Ok().json(response)
 }
 
 pub async fn api_network_total(state: web::Data<AppState>) -> HttpResponse {
     let pool = &state.pool;
+
+    {
+        let cache = state.network_total_cache.lock().unwrap();
+        if let Some(ref cached) = *cache {
+            if cached.at.elapsed().as_secs() < 30 {
+                return HttpResponse::Ok().json(&cached.data);
+            }
+        }
+    }
+
     match db::get_network_totals(pool, 2880).await {
-        Ok(data) => HttpResponse::Ok().json(data),
+        Ok(data) => {
+            let mut cache = state.network_total_cache.lock().unwrap();
+            *cache = Some(CachedResponse {
+                data: data.clone(),
+                at: std::time::Instant::now(),
+            });
+            HttpResponse::Ok().json(data)
+        }
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
@@ -110,15 +167,27 @@ pub async fn api_regions(state: web::Data<AppState>) -> HttpResponse {
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
+    let day_ago_ts = match db::get_nearest_timestamp(pool, &day_ago).await {
+        Ok(ts) => ts,
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
+    let day_ago_countries = match db::get_countries_at_timestamp(pool, &day_ago_ts).await {
+        Ok(countries) => countries,
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
+    let past_map: std::collections::HashMap<String, i32> = day_ago_countries
+        .into_iter()
+        .map(|c| (c.country_code, c.provider_count))
+        .collect();
+
     let mut region_totals: HashMap<&'static str, (i32, i32)> = HashMap::new();
 
     for cc in current_countries.iter() {
         let region = regions::get_region(&cc.country_code);
         let entry = region_totals.entry(region).or_insert((0, 0));
         entry.0 += cc.provider_count;
-
-        if let Ok(Some(past_count)) = db::get_country_at_time(pool, &cc.country_code, &day_ago).await {
-            entry.1 += cc.provider_count - past_count;
+        if let Some(past) = past_map.get(&cc.country_code) {
+            entry.1 += cc.provider_count - past;
         }
     }
 

@@ -1,6 +1,8 @@
 use actix_web::{web, App, HttpServer, HttpResponse, middleware};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use anyhow::Result;
+use std::sync::Arc;
+use std::time::Instant;
 
 mod models;
 mod handlers;
@@ -8,10 +10,21 @@ mod db;
 mod regions;
 
 use handlers::*;
-
-#[derive(Clone)]
+use models::*;
 pub struct AppState {
     pool: SqlitePool,
+    summary_cache: Arc<std::sync::Mutex<Option<CachedResponse<SummaryResponse>>>>,
+    network_total_cache: Arc<std::sync::Mutex<Option<CachedResponse<Vec<NetworkTotal>>>>>,
+}
+
+impl Clone for AppState {
+    fn clone(&self) -> Self {
+        AppState {
+            pool: self.pool.clone(),
+            summary_cache: Arc::clone(&self.summary_cache),
+            network_total_cache: Arc::clone(&self.network_total_cache),
+        }
+    }
 }
 
 #[actix_web::main]
@@ -39,7 +52,11 @@ async fn main() -> Result<()> {
 
     log::info!("Database connected successfully");
 
-    let state = AppState { pool };
+    let state = AppState {
+        pool,
+        summary_cache: Arc::new(std::sync::Mutex::new(None)),
+        network_total_cache: Arc::new(std::sync::Mutex::new(None)),
+    };
 
     log::info!("Starting server on http://0.0.0.0:5001");
 

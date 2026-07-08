@@ -1,4 +1,11 @@
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
+
+#[derive(Clone)]
+pub struct CachedResponse<T: Clone> {
+    pub data: T,
+    pub at: Instant,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ProviderCount {
