@@ -652,24 +652,50 @@ def api_movers_detailed():
         '30d': 43200
     }
 
-    latest_dt = datetime.fromisoformat(latest)
-
     # Get all countries in current snapshot
     cursor.execute("SELECT DISTINCT country_code FROM provider_counts WHERE timestamp = ? ORDER BY country_code", (latest,))
     all_countries = [row[0] for row in cursor.fetchall()]
+
+    # If the API returned a degraded snapshot, merge in missing countries
+    fallback_ts = None
+    if len(all_countries) < 80:
+        cursor.execute("""
+            SELECT timestamp FROM provider_counts
+            GROUP BY timestamp HAVING COUNT(*) >= 80
+            ORDER BY timestamp DESC LIMIT 1
+        """)
+        fallback_row = cursor.fetchone()
+        if fallback_row:
+            fallback_ts = fallback_row[0]
+            cursor.execute("SELECT DISTINCT country_code FROM provider_counts WHERE timestamp = ?", (fallback_ts,))
+            for row in cursor.fetchall():
+                cc = row[0]
+                if cc not in all_countries:
+                    all_countries.append(cc)
+
+    latest_dt = datetime.fromisoformat(latest)
 
     # Build deltas for each country and time window
     country_data = {}
     for cc in all_countries:
         country_data[cc] = {'code': cc, 'deltas': {}}
 
-    # Get current counts
+    # Get current counts from latest snapshot
     cursor.execute("SELECT country_code, country_name, provider_count FROM provider_counts WHERE timestamp = ?", (latest,))
     for row in cursor.fetchall():
         cc = row[0]
         if cc in country_data:
             country_data[cc]['name'] = row[1]
             country_data[cc]['current'] = row[2]
+
+    # Fill in current counts for countries missing from latest but present in fallback
+    if fallback_ts:
+        cursor.execute("SELECT country_code, country_name, provider_count FROM provider_counts WHERE timestamp = ?", (fallback_ts,))
+        for row in cursor.fetchall():
+            cc = row[0]
+            if cc in country_data and 'current' not in country_data[cc]:
+                country_data[cc]['name'] = row[1]
+                country_data[cc]['current'] = row[2]
 
     # Calculate deltas for each time window
     for window_name, minutes in windows.items():
