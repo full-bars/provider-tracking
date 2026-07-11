@@ -337,10 +337,25 @@ pub async fn api_movers_detailed(state: web::Data<AppState>) -> HttpResponse {
         ("30d", 43200),
     ];
 
-    let current_countries = match db::get_countries_at_timestamp(pool, &latest).await {
+    let mut current_countries = match db::get_countries_at_timestamp(pool, &latest).await {
         Ok(c) => c,
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
+
+    // If the API returned a degraded snapshot, merge in missing countries
+    // from the last complete snapshot so the movers tables stay populated
+    if current_countries.len() < 80 {
+        if let Ok(fallback) = db::get_last_complete_snapshot(pool, 80).await {
+            let current_codes: std::collections::HashSet<String> = current_countries.iter()
+                .map(|c| c.country_code.clone())
+                .collect();
+            for fc in fallback {
+                if !current_codes.contains(&fc.country_code) {
+                    current_countries.push(fc);
+                }
+            }
+        }
+    }
 
     let mut past_data: HashMap<String, HashMap<String, i32>> = HashMap::new();
     for (window_name, minutes) in windows.iter() {

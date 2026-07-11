@@ -91,6 +91,24 @@ pub async fn get_countries_before(pool: &SqlitePool, timestamp: &str) -> Result<
     get_countries_at_timestamp(pool, &nearest).await
 }
 
+pub async fn get_last_complete_snapshot(pool: &SqlitePool, min_countries: i32) -> Result<Vec<ProviderCount>> {
+    let rows = sqlx::query_as::<_, ProviderCount>(
+        "SELECT p.timestamp, p.country_code, p.country_name, p.provider_count
+         FROM provider_counts p
+         WHERE p.timestamp = (
+             SELECT p2.timestamp FROM provider_counts p2
+             GROUP BY p2.timestamp
+             HAVING COUNT(*) >= ?
+             ORDER BY p2.timestamp DESC LIMIT 1
+         )"
+    )
+    .bind(min_countries)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows)
+}
+
 pub async fn get_country_at_time(
     pool: &SqlitePool,
     country_code: &str,
