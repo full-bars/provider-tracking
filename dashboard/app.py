@@ -831,6 +831,7 @@ DASHBOARD_HTML = '''
         .ticker-item.loss { color: #f87171; }
         .hero-chart-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
         .hero-chart-card h3 { margin-bottom: 15px; color: #a0aec0; font-size: 14px; text-transform: uppercase; display: flex; justify-content: space-between; }
+        .hero-chart-card .chart-container { height: 600px; }
         .live-badge { color: #4ade80; animation: blink 2s infinite; font-weight: bold; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
         .weekly-charts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
@@ -890,7 +891,7 @@ DASHBOARD_HTML = '''
 
         <div class="hero-chart-card">
             <h3><span>Network Total Over Time</span></h3>
-            <div class="chart-container" style="height: 600px;"><canvas id="totalChart"></canvas></div>
+            <div class="chart-container"><canvas id="totalChart"></canvas></div>
         </div>
 
         <h3 style="color: #a0aec0; font-size: 14px; text-transform: uppercase; margin-bottom: 15px;">Monthly Breakdown (Week by Week)</h3>
