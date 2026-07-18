@@ -774,15 +774,17 @@ DASHBOARD_HTML = '''
 <!DOCTYPE html>
 <html>
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Provider Tracking Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1419; color: #e0e6ed; padding: 20px; }
         .container { max-width: 100%; margin: 0 auto; padding: 0 10px; }
         h1 { font-size: 28px; margin-bottom: 30px; }
         .header { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; }
+        .stat-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; min-width: 0; }
         .stat-value { font-size: 32px; font-weight: bold; color: #4ade80; }
         .stat-label { font-size: 12px; text-transform: uppercase; color: #9ca3af; margin-top: 5px; }
         .stat-delta { font-size: 14px; margin-top: 8px; color: #60a5fa; }
@@ -790,10 +792,11 @@ DASHBOARD_HTML = '''
         .delta-negative { color: #f87171; }
         .inline-delta { font-size: 13px; margin-top: 4px; color: #e0e6ed; }
         .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .chart-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; }
+        .chart-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; min-width: 0; }
         .chart-card h3 { margin-bottom: 15px; color: #a0aec0; font-size: 14px; text-transform: uppercase; }
-        .chart-container { position: relative; height: 300px; }
-        .table-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .chart-container { position: relative; height: 300px; min-width: 0; }
+        .chart-container canvas { max-width: 100%; }
+        .table-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; margin-bottom: 20px; overflow-x: auto; }
         .table-card h3 { margin-bottom: 15px; color: #a0aec0; font-size: 14px; text-transform: uppercase; }
         table { width: 100%; border-collapse: collapse; }
         th { text-align: left; padding: 10px; border-bottom: 1px solid #2d3748; color: #a0aec0; font-size: 12px; }
@@ -806,11 +809,11 @@ DASHBOARD_HTML = '''
         .alert-banner { background: #7f1d1d; border: 1px solid #991b1b; color: #fecaca; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; width: fit-content; }
         .alert-banner.show { display: block; }
         .alert-banner strong { color: #fee2e2; }
-        .controls { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; }
         .toggle-btn { background: #2d3748; border: 1px solid #4a5568; color: #e0e6ed; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; }
         .toggle-btn.active { background: #4ade80; color: #0f1419; }
         .comparison-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-        .comparison-input { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; }
+        .comparison-input { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; min-width: 0; }
         .comparison-input input { width: 100%; }
         .indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
         .indicator.stable { background: #4ade80; }
@@ -828,11 +831,40 @@ DASHBOARD_HTML = '''
         .ticker-item.loss { color: #f87171; }
         .hero-chart-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
         .hero-chart-card h3 { margin-bottom: 15px; color: #a0aec0; font-size: 14px; text-transform: uppercase; display: flex; justify-content: space-between; }
+        .hero-chart-card .chart-container { height: 600px; }
         .live-badge { color: #4ade80; animation: blink 2s infinite; font-weight: bold; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
         .weekly-charts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
-        .weekly-charts .chart-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 15px; }
+        .weekly-charts .chart-card { background: #1a1f26; border: 1px solid #2d3748; border-radius: 8px; padding: 15px; min-width: 0; }
         .weekly-charts .chart-container { height: 120px; }
+        .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; }
+        @media (max-width: 900px) {
+            .weekly-charts { grid-template-columns: repeat(2, 1fr); }
+            .table-card { padding: 8px; }
+            table { font-size: 10px; }
+            th, td { padding: 5px 4px; }
+        }
+        @media (max-width: 640px) {
+            .header { grid-template-columns: 1fr; gap: 12px; }
+            .comparison-container { grid-template-columns: 1fr; }
+            .controls { flex-direction: column; align-items: stretch; }
+            .two-col-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 500px) {
+            body { padding: 6px; }
+            .container { padding: 0 2px; }
+            h1 { font-size: 20px; }
+            .stat-value { font-size: 24px; }
+            .stat-card { padding: 14px; }
+            .charts { grid-template-columns: 1fr; }
+            .weekly-charts { gap: 8px; }
+            .weekly-charts .chart-card { padding: 10px; }
+            .weekly-charts .chart-container { height: 100px; }
+            .hero-chart-card .chart-container { height: 250px; }
+            .table-card { padding: 6px; }
+            table { font-size: 10px; }
+            th, td { padding: 6px; }
+        }
     </style>
 </head>
 <body>
@@ -859,7 +891,7 @@ DASHBOARD_HTML = '''
 
         <div class="hero-chart-card">
             <h3><span>Network Total Over Time</span></h3>
-            <div class="chart-container" style="height: 600px;"><canvas id="totalChart"></canvas></div>
+            <div class="chart-container"><canvas id="totalChart"></canvas></div>
         </div>
 
         <h3 style="color: #a0aec0; font-size: 14px; text-transform: uppercase; margin-bottom: 15px;">Monthly Breakdown (Week by Week)</h3>
@@ -962,7 +994,7 @@ DASHBOARD_HTML = '''
 
         <div class="table-card">
             <h3>⚠️ At Risk</h3>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 12px;">
+            <div class="two-col-grid" style="gap: 20px; font-size: 12px;">
                 <div>
                     <h4 style="color: #9ca3af; margin-bottom: 10px; font-size: 11px; text-transform: uppercase;">Disappeared (0 providers)</h4>
                     <div id="disappeared-list"></div>
